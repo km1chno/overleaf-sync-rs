@@ -2,15 +2,30 @@ pub const LOGIN_URL: &str = "https://www.overleaf.com/login";
 pub const PROJECTS_URL: &str = "https://www.overleaf.com/project";
 
 use anyhow::{Context, Result};
-use headless_chrome::protocol::cdp::Network::Cookie;
+use headless_chrome::protocol::cdp::{types::JsFloat, Network::Cookie};
 use reqwest::{
     header::{HeaderMap, HeaderValue, COOKIE},
     Client,
 };
-
+use serde::{Deserialize, Serialize};
 use soup::prelude::*;
 
-use serde::Deserialize;
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SessionCookie {
+    pub name: String,
+    pub value: String,
+    pub expires: JsFloat,
+}
+
+impl SessionCookie {
+    pub fn from_chrome_cookie(cookie: Cookie) -> Self {
+        SessionCookie {
+            name: cookie.name,
+            value: cookie.value,
+            expires: cookie.expires,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,7 +46,7 @@ pub struct OverleafClient {
 }
 
 impl OverleafClient {
-    pub fn new(session_cookie: Cookie) -> Self {
+    pub fn new(session_cookie: SessionCookie) -> Self {
         let mut headers = HeaderMap::new();
 
         headers.insert(
