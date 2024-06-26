@@ -9,9 +9,11 @@ use crate::{
 use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
+use std::io::Cursor;
 use std::{
     fs::{self, File},
     io::BufReader,
+    path::PathBuf,
 };
 
 #[derive(Parser)]
@@ -35,7 +37,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Some(Commands::Clone { name }) => match clone_action(name) {
+        Some(Commands::Clone { name }) => match clone_action(name).await {
             Ok(()) => println!("Successfully cloned project {name}."),
             Err(err) => eprintln!("{err}\nFailed to clone project {name}."),
         },
@@ -89,10 +91,8 @@ fn get_session_cookie_from_file() -> Option<SessionCookie> {
 // Save session cookie to .olsync/olauth.
 fn save_session_cookie_to_file(cookie: &SessionCookie) -> Result<()> {
     let serialized_cookie = serde_json::to_string(cookie)?;
-    match fs::write(".olsync/olauth", serialized_cookie) {
-        Ok(()) => Ok(()),
-        Err(_) => bail!("Failed to save session cookie to .olsync/olauth"),
-    }
+    fs::write(".olsync/olauth", serialized_cookie)
+        .or_else(|_| bail!("Failed to save session cookie to .olsync/olauth"))
 }
 
 // Read cached session cookie or spawn browser to login and
@@ -120,7 +120,7 @@ async fn list_action() -> Result<ProjectsList> {
 }
 
 // Clone project into current directory.
-fn clone_action(name: &String) -> Result<()> {
+async fn clone_action(name: &String) -> Result<()> {
     if is_ols_repository() {
         bail!(concat!(
             "An Overleaf project has already been cloned in this directory. ",
@@ -131,10 +131,14 @@ fn clone_action(name: &String) -> Result<()> {
     init_ols_repository()?;
 
     let session_cookie = get_session_cookie()?;
+    let overleaf_client = OverleafClient::new(session_cookie);
+    let project = overleaf_client.get_project(name).await?;
 
-    println!("Successfully retrieved the cookie:");
-    println!("{:?}", session_cookie);
-    println!("Cloning {name}... (PALCEHOLDER)");
+    let archive: Vec<u8> = overleaf_client
+        .download_project_zip(project.id)
+        .await?
+        .to_vec();
 
-    Ok(())
+    zip_extract::extract(Cursor::new(archive), &PathBuf::from("."), true)
+        .or_else(|_| bail!("Failed to extract downloaded project zip file."))
 }

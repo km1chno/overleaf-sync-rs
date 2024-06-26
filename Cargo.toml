@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.86"
+bytes = "1.6.0"
 chrono = "0.4.38"
 clap = { version = "4.5.7", features = ["derive"] }
 headless_chrome = "1.0.10"
@@ -14,3 +15,4 @@ serde_json = "1.0.117"
 soup = "0.5.1"
 tokio = { version = "1.38.0", features = ["full"] }
 tokio-macros = { version = "0.2.0-alpha.6" }
+zip-extract = "0.1.3"

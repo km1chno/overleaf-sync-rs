@@ -1,7 +1,9 @@
 pub const LOGIN_URL: &str = "https://www.overleaf.com/login";
 pub const PROJECTS_URL: &str = "https://www.overleaf.com/project";
+pub const DOWNLOAD_PROJECT_URL: &str = "https://www.overleaf.com/project/{}/download/zip";
 
 use anyhow::{Context, Result};
+use bytes::Bytes;
 use headless_chrome::protocol::cdp::{types::JsFloat, Network::Cookie};
 use reqwest::{
     header::{HeaderMap, HeaderValue, COOKIE},
@@ -65,6 +67,7 @@ impl OverleafClient {
         Self { reqwest_client }
     }
 
+    // Fetch all projects.
     pub async fn get_all_projects(&self) -> Result<ProjectsList> {
         let projects_page_content = self
             .reqwest_client
@@ -83,5 +86,29 @@ impl OverleafClient {
 
         serde_json::from_str(projects_list_content.as_str())
             .context("Failed to parse list of projects.")
+    }
+
+    // Fetch specified project metadata.
+    pub async fn get_project(&self, name: &String) -> Result<Project> {
+        self.get_all_projects()
+            .await?
+            .projects
+            .into_iter()
+            .filter(|project| project.name == *name)
+            .last()
+            .context(format!("Project {name} not found."))
+    }
+
+    // Download specified project as zip.
+    pub async fn download_project_zip(&self, project_id: String) -> Result<Bytes> {
+        self.reqwest_client
+            .get(DOWNLOAD_PROJECT_URL.replace("{}", project_id.as_str()))
+            .send()
+            .await?
+            .bytes()
+            .await
+            .context(format!(
+                "Error occured while downloading project {project_id} as zip.",
+            ))
     }
 }

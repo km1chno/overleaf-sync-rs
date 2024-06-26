@@ -2,4 +2,4 @@
 
 ## todo
 
-[] store cookie in file and only open login browser if its missing or is expired
+- [] nicer list command output
