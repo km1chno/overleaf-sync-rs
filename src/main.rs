@@ -2,18 +2,13 @@ pub mod login_browser;
 pub mod overleaf_client;
 pub mod repository;
 
-use crate::{
-    overleaf_client::OverleafClient,
-    repository::{
-        create_backup, get_olsync_directory, get_session_cookie, init_ols_repository,
-        is_ols_repository,
-    },
+use crate::repository::{
+    download_project, get_olsync_directory, init_ols_repository, is_ols_repository,
+    move_project_to_backup,
 };
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use std::io::Cursor;
-use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -63,17 +58,7 @@ async fn clone_action(name: &String) -> Result<()> {
 
     let olsync_dir = get_olsync_directory().with_context(|| "Failed to find .olsync directory.")?;
 
-    let session_cookie = get_session_cookie(&olsync_dir)?;
-    let overleaf_client = OverleafClient::new(session_cookie);
-    let project = overleaf_client.get_project(name).await?;
-
-    let archive: Vec<u8> = overleaf_client
-        .download_project_zip(project.id)
-        .await?
-        .to_vec();
-
-    zip_extract::extract(Cursor::new(archive), &PathBuf::from(name), true)
-        .or_else(|_| bail!("Failed to extract downloaded project zip file."))
+    download_project(&olsync_dir).await
 }
 
 // Pull the current state from Overleaf.
@@ -84,7 +69,7 @@ async fn pull_action() -> Result<()> {
 
     let olsync_dir = get_olsync_directory().with_context(|| "Failed to find .olsync directory.")?;
 
-    create_backup(&olsync_dir)?;
+    move_project_to_backup(&olsync_dir)?;
 
-    Ok(())
+    download_project(&olsync_dir).await
 }

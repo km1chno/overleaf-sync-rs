@@ -1,9 +1,13 @@
-use crate::{login_browser::launch_login_browser, overleaf_client::SessionCookie};
+use crate::{
+    login_browser::launch_login_browser,
+    overleaf_client::{OverleafClient, SessionCookie},
+};
 
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use fs_extra::dir::CopyOptions;
-use std::env::{self};
+use std::env;
+use std::io::Cursor;
 use std::{
     fs::{self, File},
     io::BufReader,
@@ -97,17 +101,32 @@ pub fn get_current_project_name(olsync_dir: &PathBuf) -> Result<String> {
         .context("Failed to read project name.")
 }
 
-// Create a timestamp annotated backup of current local project.
-pub fn create_backup(olsync_dir: &PathBuf) -> Result<()> {
-    let name = &get_current_project_name(olsync_dir)?;
-    let timestamp = Utc::now().timestamp_millis();
+// Get project directory, equal to {olsync_dir}../{project_name}.
+pub fn get_current_project_dir(olsync_dir: &PathBuf) -> Result<PathBuf> {
+    let project_name = &get_current_project_name(olsync_dir)?;
     let root_dir = olsync_dir
         .parent()
         .with_context(|| "Could not find repository root directory.")?;
 
-    let project_dir = root_dir.join(name);
+    Ok(root_dir.join(project_name))
+}
+
+// Create a timestamp annotated backup of current local project (move it - not copy).
+pub fn move_project_to_backup(olsync_dir: &PathBuf) -> Result<()> {
+    let project_dir = get_current_project_dir(olsync_dir)?;
+
+    if matches!(fs::exists(project_dir.clone()), Ok(false)) {
+        println!("WARN: No local project found. Not creating any backup before pulling.");
+        return Ok(());
+    }
+
+    let name = &get_current_project_name(olsync_dir)?;
+    let timestamp = Utc::now().timestamp_millis();
     let bak_name = &format!("{name}-{timestamp}.bak");
-    let renamed_dir = root_dir.join(bak_name);
+    let renamed_dir = project_dir
+        .parent()
+        .context("Invalid path.")?
+        .join(bak_name);
     let bak_dir = olsync_dir.join(bak_name);
 
     println!(
@@ -117,8 +136,23 @@ pub fn create_backup(olsync_dir: &PathBuf) -> Result<()> {
     );
 
     fs::rename(project_dir.clone(), bak_name)?;
-    fs_extra::dir::copy(renamed_dir.clone(), olsync_dir, &CopyOptions::new())?;
-    fs::rename(renamed_dir, name)?;
+    fs_extra::dir::move_dir(renamed_dir.clone(), olsync_dir, &CopyOptions::new())?;
 
     Ok(())
+}
+
+// Download project from Overleaf.
+pub async fn download_project(olsync_dir: &PathBuf) -> Result<()> {
+    let session_cookie = get_session_cookie(olsync_dir)?;
+    let overleaf_client = OverleafClient::new(session_cookie);
+    let project_name = &get_current_project_name(olsync_dir)?;
+    let project = overleaf_client.get_project(project_name).await?;
+
+    let archive: Vec<u8> = overleaf_client
+        .download_project_zip(project.id)
+        .await?
+        .to_vec();
+
+    zip_extract::extract(Cursor::new(archive), &PathBuf::from(project_name), true)
+        .or_else(|_| bail!("Failed to extract downloaded project zip file."))
 }
