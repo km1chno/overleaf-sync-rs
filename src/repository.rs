@@ -1,6 +1,6 @@
 use crate::{
     login_browser::launch_login_browser,
-    overleaf_client::{OverleafClient, SessionCookie},
+    overleaf_client::{OverleafClient, SessionInfo},
 };
 
 use anyhow::{bail, Context, Result};
@@ -52,45 +52,46 @@ pub fn init_ols_repository(project_name: &String) -> Result<()> {
     Ok(())
 }
 
-// Try to retrieve cached session cookie from .olsync/olauth.
-pub fn get_session_cookie_from_file(olsync_dir: &PathBuf) -> Option<SessionCookie> {
-    let cookie_path = &PathBuf::from(olsync_dir).join("olauth");
-    let file = File::open(cookie_path);
+// Try to retrieve cached session info from .olsync/olauth.
+pub fn get_session_info_from_file(olsync_dir: &PathBuf) -> Option<SessionInfo> {
+    let info_path = &PathBuf::from(olsync_dir).join("olauth");
+    let file = File::open(info_path);
 
     match file {
         Ok(f) => {
             let reader = BufReader::new(f);
-            let cookie: Option<SessionCookie> = serde_json::from_reader(reader).unwrap_or(None);
-
-            // Check whether the cookie has expired.
-            cookie.filter(|c| c.expires > ((Utc::now().timestamp_millis() / 1000) as f64))
+            serde_json::from_reader(reader)
+                .ok()
+                .filter(|i: &SessionInfo| !i.session_cookie.has_expired())
+            // .filter(|i: &SessionInfo| !i.gclb_cookie.has_expired()) // TODO: If GCLB cookie is
+            // not needed, then remove this line.
         }
         Err(_) => None,
     }
 }
 
-// Save session cookie to .olsync/olauth.
-pub fn save_session_cookie_to_file(olsync_dir: &PathBuf, cookie: &SessionCookie) -> Result<()> {
-    let serialized_cookie = serde_json::to_string(cookie)?;
-    let cookie_path = &PathBuf::from(olsync_dir).join("olauth");
+// Save session info to .olsync/olauth.
+pub fn save_session_info_to_file(olsync_dir: &PathBuf, session_info: &SessionInfo) -> Result<()> {
+    let serialized_info = serde_json::to_string(session_info)?;
+    let info_path = &PathBuf::from(olsync_dir).join("olauth");
 
-    fs::write(cookie_path, serialized_cookie).or_else(|_| {
+    fs::write(info_path, serialized_info).or_else(|_| {
         bail!(
-            "Failed to save session cookie to {}",
-            cookie_path.to_str().unwrap_or("INVALID PATH")
+            "Failed to save session info to {}",
+            info_path.to_str().unwrap_or("INVALID PATH")
         )
     })
 }
 
-// Read cached session cookie or spawn browser to login and
-// save the new cookie in .olsync/olauth.
-pub fn get_session_cookie(olsync_dir: &PathBuf) -> Result<SessionCookie> {
-    get_session_cookie_from_file(olsync_dir)
+// Read cached session info or spawn browser to login and
+// save new info in .olsync/olauth.
+pub fn get_session_info(olsync_dir: &PathBuf) -> Result<SessionInfo> {
+    get_session_info_from_file(olsync_dir)
         .map(Ok)
         .unwrap_or_else(|| {
-            let cookie = launch_login_browser()?;
-            save_session_cookie_to_file(olsync_dir, &cookie)?;
-            Ok(cookie)
+            let session_info = launch_login_browser()?;
+            save_session_info_to_file(olsync_dir, &session_info)?;
+            Ok(session_info)
         })
 }
 
@@ -141,8 +142,8 @@ pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
 // Download project from Overleaf in zip and save in target directory. It will be extracted if
 // target_dir extension is not 'zip'. If target_dir already exists, it will be overriden.
 pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result<()> {
-    let session_cookie = get_session_cookie(olsync_dir)?;
-    let overleaf_client = OverleafClient::new(session_cookie);
+    let session_info = get_session_info(olsync_dir)?;
+    let overleaf_client = OverleafClient::new(session_info);
     let project_name = &get_project_name(olsync_dir)?;
     let project = overleaf_client.get_project(project_name).await?;
 
@@ -171,4 +172,15 @@ pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result
         zip_extract::extract(Cursor::new(archive), target_dir, true)
             .or_else(|_| bail!("Failed to extract downloaded project zip file."))
     }
+}
+
+pub async fn push_files(olsync_dir: &PathBuf, files: &[String]) -> Result<()> {
+    let session_info = get_session_info(olsync_dir)?;
+    let overleaf_client = OverleafClient::new(session_info);
+    let project_name = &get_project_name(olsync_dir)?;
+    let project = overleaf_client.get_project(project_name).await?;
+
+    overleaf_client.get_project_info(&project.id).await?;
+
+    Ok(())
 }

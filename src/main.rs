@@ -4,7 +4,7 @@ pub mod repository;
 
 use crate::repository::{
     create_local_backup, download_project, get_olsync_directory, get_project_dir, get_project_name,
-    init_ols_repository, is_ols_repository,
+    init_ols_repository, is_ols_repository, push_files,
 };
 
 use anyhow::{bail, Context, Result};
@@ -74,7 +74,14 @@ async fn push_action(files: &[String]) -> Result<()> {
     files
         .iter()
         .for_each(|file| println!("Pushing {file}... PLACEHOLDER"));
-    Ok(())
+
+    if !is_ols_repository() {
+        bail!("Not a olsync repository! Clone a project before pushing.")
+    }
+
+    let olsync_dir = get_olsync_directory().with_context(|| "Failed to find .olsync directory.")?;
+
+    push_files(&olsync_dir, files).await
 }
 
 // Pull the current state from Overleaf.
