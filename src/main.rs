@@ -3,8 +3,8 @@ pub mod overleaf_client;
 pub mod repository;
 
 use crate::repository::{
-    download_project, get_olsync_directory, init_ols_repository, is_ols_repository,
-    move_project_to_backup,
+    create_local_backup, download_project, get_olsync_directory, get_project_dir, get_project_name,
+    init_ols_repository, is_ols_repository,
 };
 
 use anyhow::{bail, Context, Result};
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
 }
 
 // Clone project into current directory.
-async fn clone_action(name: &String) -> Result<()> {
+async fn clone_action(project_name: &String) -> Result<()> {
     if is_ols_repository() {
         bail!(concat!(
             "An Overleaf project has already been cloned in this directory. ",
@@ -62,17 +62,17 @@ async fn clone_action(name: &String) -> Result<()> {
         ));
     }
 
-    init_ols_repository(name)?;
+    init_ols_repository(project_name)?;
 
     let olsync_dir = get_olsync_directory().with_context(|| "Failed to find .olsync directory.")?;
 
-    download_project(&olsync_dir).await
+    download_project(&olsync_dir, &get_project_dir(&olsync_dir)?).await
 }
 
-// Push files to remote.
-async fn push_action(files: &Vec<String>) -> Result<()> {
+// Push files to Overleaf. Currently only files in root project directory are supported.
+async fn push_action(files: &[String]) -> Result<()> {
     files
-        .into_iter()
+        .iter()
         .for_each(|file| println!("Pushing {file}... PLACEHOLDER"));
     Ok(())
 }
@@ -85,7 +85,7 @@ async fn pull_action() -> Result<()> {
 
     let olsync_dir = get_olsync_directory().with_context(|| "Failed to find .olsync directory.")?;
 
-    move_project_to_backup(&olsync_dir)?;
+    create_local_backup(&olsync_dir)?;
 
-    download_project(&olsync_dir).await
+    download_project(&olsync_dir, &get_project_dir(&olsync_dir)?).await
 }

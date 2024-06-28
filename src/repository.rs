@@ -6,8 +6,8 @@ use crate::{
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use fs_extra::dir::CopyOptions;
-use std::env;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
+use std::{env, path::Path};
 use std::{
     fs::{self, File},
     io::BufReader,
@@ -70,7 +70,7 @@ pub fn get_session_cookie_from_file(olsync_dir: &PathBuf) -> Option<SessionCooki
 }
 
 // Save session cookie to .olsync/olauth.
-pub fn save_session_cookie_to_file(cookie: &SessionCookie, olsync_dir: &PathBuf) -> Result<()> {
+pub fn save_session_cookie_to_file(olsync_dir: &PathBuf, cookie: &SessionCookie) -> Result<()> {
     let serialized_cookie = serde_json::to_string(cookie)?;
     let cookie_path = &PathBuf::from(olsync_dir).join("olauth");
 
@@ -85,25 +85,25 @@ pub fn save_session_cookie_to_file(cookie: &SessionCookie, olsync_dir: &PathBuf)
 // Read cached session cookie or spawn browser to login and
 // save the new cookie in .olsync/olauth.
 pub fn get_session_cookie(olsync_dir: &PathBuf) -> Result<SessionCookie> {
-    match get_session_cookie_from_file(olsync_dir) {
-        Some(cookie) => Ok(cookie),
-        _ => {
+    get_session_cookie_from_file(olsync_dir)
+        .map(Ok)
+        .unwrap_or_else(|| {
             let cookie = launch_login_browser()?;
-            save_session_cookie_to_file(&cookie, olsync_dir)?;
+            save_session_cookie_to_file(olsync_dir, &cookie)?;
             Ok(cookie)
-        }
-    }
+        })
 }
 
 // Get current repository project name.
-pub fn get_current_project_name(olsync_dir: &PathBuf) -> Result<String> {
+pub fn get_project_name(olsync_dir: &PathBuf) -> Result<String> {
     fs::read_to_string(PathBuf::from(olsync_dir).join("name"))
         .context("Failed to read project name.")
 }
 
-// Get project directory, equal to {olsync_dir}../{project_name}.
-pub fn get_current_project_dir(olsync_dir: &PathBuf) -> Result<PathBuf> {
-    let project_name = &get_current_project_name(olsync_dir)?;
+// Get project directory, equal to {olsync_dir}/../{project_name}. Does not check whether the
+// directory exists!
+pub fn get_project_dir(olsync_dir: &PathBuf) -> Result<PathBuf> {
+    let project_name = &get_project_name(olsync_dir)?;
     let root_dir = olsync_dir
         .parent()
         .with_context(|| "Could not find repository root directory.")?;
@@ -111,41 +111,39 @@ pub fn get_current_project_dir(olsync_dir: &PathBuf) -> Result<PathBuf> {
     Ok(root_dir.join(project_name))
 }
 
-// Create a timestamp annotated backup of current local project (move it - not copy).
-pub fn move_project_to_backup(olsync_dir: &PathBuf) -> Result<()> {
-    let project_dir = get_current_project_dir(olsync_dir)?;
+// Create a zipped, timestamp annotated backup of current local project (move it - not copy).
+pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
+    let project_dir = get_project_dir(olsync_dir)?;
 
-    if matches!(fs::exists(project_dir.clone()), Ok(false)) {
-        println!("WARN: No local project found. Not creating any backup before pulling.");
+    if !matches!(fs::exists(project_dir.clone()), Ok(true)) {
+        println!("WARN: No local project found. Not backup created.");
         return Ok(());
     }
 
-    let name = &get_current_project_name(olsync_dir)?;
-    let timestamp = Utc::now().timestamp_millis();
-    let bak_name = &format!("{name}-{timestamp}.bak");
-    let renamed_dir = project_dir
-        .parent()
-        .context("Invalid path.")?
-        .join(bak_name);
-    let bak_dir = olsync_dir.join(bak_name);
+    let bak_name = &format!(
+        "{}-{}.local.bak",
+        &get_project_name(olsync_dir)?,
+        Utc::now().timestamp_millis()
+    );
+    let bak_path = olsync_dir.join(bak_name);
 
     println!(
-        "Creating backup of {} in {}",
-        project_dir.to_str().unwrap_or("INVALID PATH"),
-        bak_dir.to_str().unwrap_or("INVALID PATH")
+        "Creating local backup in {}",
+        bak_path.to_str().unwrap_or("INVALID PATH")
     );
 
-    fs::rename(project_dir.clone(), bak_name)?;
-    fs_extra::dir::move_dir(renamed_dir.clone(), olsync_dir, &CopyOptions::new())?;
+    fs::create_dir(bak_path.clone())?;
+    fs_extra::dir::copy(project_dir, bak_path, &CopyOptions::new())?;
 
     Ok(())
 }
 
-// Download project from Overleaf.
-pub async fn download_project(olsync_dir: &PathBuf) -> Result<()> {
+// Download project from Overleaf in zip and save in target directory. It will be extracted if
+// target_dir extension is not 'zip'. If target_dir already exists, it will be overriden.
+pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result<()> {
     let session_cookie = get_session_cookie(olsync_dir)?;
     let overleaf_client = OverleafClient::new(session_cookie);
-    let project_name = &get_current_project_name(olsync_dir)?;
+    let project_name = &get_project_name(olsync_dir)?;
     let project = overleaf_client.get_project(project_name).await?;
 
     let archive: Vec<u8> = overleaf_client
@@ -153,6 +151,24 @@ pub async fn download_project(olsync_dir: &PathBuf) -> Result<()> {
         .await?
         .to_vec();
 
-    zip_extract::extract(Cursor::new(archive), &PathBuf::from(project_name), true)
-        .or_else(|_| bail!("Failed to extract downloaded project zip file."))
+    // If target_dir has .zip extension, do not extract.
+    if matches!(target_dir.extension().and_then(|e| e.to_str()), Some("zip")) {
+        println!(
+            "DETECTED .ZIP EXTENSION. SAVING TO {}.",
+            target_dir.to_str().unwrap_or("INVALID PATH"),
+        );
+        // fs::write(target_dir, archive).context(format!(
+        //     "Failed to save downloaded project to {}.",
+        //     target_dir.to_str().unwrap_or("INVALID DIR")
+        // ))
+        Ok(())
+    } else {
+        // Wipe out current contents of target_dir before extracting.
+        if matches!(fs::exists(target_dir), Ok(true)) {
+            fs::remove_dir_all(target_dir)?;
+        }
+
+        zip_extract::extract(Cursor::new(archive), target_dir, true)
+            .or_else(|_| bail!("Failed to extract downloaded project zip file."))
+    }
 }
