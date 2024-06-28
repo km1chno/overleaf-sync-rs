@@ -20,8 +20,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Clone {
-        #[arg(short, long)]
+        #[arg(short, long, required = true)]
         name: String,
+    },
+    Push {
+        #[arg(short, long, required = true)]
+        files: Vec<String>,
     },
     Pull,
 }
@@ -34,6 +38,10 @@ async fn main() -> Result<()> {
         Some(Commands::Clone { name }) => match clone_action(name).await {
             Ok(()) => println!("Successfully cloned project {name}."),
             Err(err) => eprintln!("{err}\nFailed to clone project {name}."),
+        },
+        Some(Commands::Push { files }) => match push_action(files).await {
+            Ok(()) => println!("Successfully pushed all files."),
+            Err(err) => eprintln!("{err}\nFailed to push some files."),
         },
         Some(Commands::Pull) => match pull_action().await {
             Ok(()) => println!("Successfully pulled current project state from Overleaf."),
@@ -59,6 +67,14 @@ async fn clone_action(name: &String) -> Result<()> {
     let olsync_dir = get_olsync_directory().with_context(|| "Failed to find .olsync directory.")?;
 
     download_project(&olsync_dir).await
+}
+
+// Push files to remote.
+async fn push_action(files: &Vec<String>) -> Result<()> {
+    files
+        .into_iter()
+        .for_each(|file| println!("Pushing {file}... PLACEHOLDER"));
+    Ok(())
 }
 
 // Pull the current state from Overleaf.
