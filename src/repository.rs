@@ -6,7 +6,7 @@ use crate::{
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use fs_extra::dir::CopyOptions;
-use std::io::{Cursor, Write};
+use std::io::Cursor;
 use std::{env, path::Path};
 use std::{
     fs::{self, File},
@@ -63,8 +63,6 @@ pub fn get_session_info_from_file(olsync_dir: &PathBuf) -> Option<SessionInfo> {
             serde_json::from_reader(reader)
                 .ok()
                 .filter(|i: &SessionInfo| !i.session_cookie.has_expired())
-            // .filter(|i: &SessionInfo| !i.gclb_cookie.has_expired()) // TODO: If GCLB cookie is
-            // not needed, then remove this line.
         }
         Err(_) => None,
     }
@@ -112,7 +110,7 @@ pub fn get_project_dir(olsync_dir: &PathBuf) -> Result<PathBuf> {
     Ok(root_dir.join(project_name))
 }
 
-// Create a zipped, timestamp annotated backup of current local project (move it - not copy).
+// Create a zipped, timestamp annotated backup of current local project.
 pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
     let project_dir = get_project_dir(olsync_dir)?;
 
@@ -154,15 +152,10 @@ pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result
 
     // If target_dir has .zip extension, do not extract.
     if matches!(target_dir.extension().and_then(|e| e.to_str()), Some("zip")) {
-        println!(
-            "DETECTED .ZIP EXTENSION. SAVING TO {}.",
-            target_dir.to_str().unwrap_or("INVALID PATH"),
-        );
-        // fs::write(target_dir, archive).context(format!(
-        //     "Failed to save downloaded project to {}.",
-        //     target_dir.to_str().unwrap_or("INVALID DIR")
-        // ))
-        Ok(())
+        fs::write(target_dir, archive).context(format!(
+            "Failed to save downloaded project to {}.",
+            target_dir.to_str().unwrap_or("INVALID DIR")
+        ))
     } else {
         // Wipe out current contents of target_dir before extracting.
         if matches!(fs::exists(target_dir), Ok(true)) {
@@ -175,6 +168,8 @@ pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result
 }
 
 pub async fn push_files(olsync_dir: &PathBuf, files: &[String]) -> Result<()> {
+    print!("pushing {:?}", files);
+
     let session_info = get_session_info(olsync_dir)?;
     let overleaf_client = OverleafClient::new(session_info);
     let project_name = &get_project_name(olsync_dir)?;

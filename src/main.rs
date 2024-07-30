@@ -3,7 +3,7 @@ pub mod overleaf_client;
 pub mod repository;
 
 use crate::repository::{
-    create_local_backup, download_project, get_olsync_directory, get_project_dir, get_project_name,
+    create_local_backup, download_project, get_olsync_directory, get_project_dir,
     init_ols_repository, is_ols_repository, push_files,
 };
 

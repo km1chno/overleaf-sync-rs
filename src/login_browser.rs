@@ -22,9 +22,6 @@ pub fn launch_login_browser() -> Result<SessionInfo> {
         Duration::new(ONE_HOUR_IN_SECONDS, 0),
     )?;
 
-    println!("COOKIES FOUND:");
-    println!("{:?}", tab.get_cookies()?);
-
     let session_cookie = tab
         .get_cookies()?
         .iter()

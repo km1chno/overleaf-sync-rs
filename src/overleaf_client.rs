@@ -1,16 +1,13 @@
 use anyhow::{Context, Result};
 use bytes::Bytes;
 use chrono::Utc;
-use futures_util::FutureExt;
 use headless_chrome::protocol::cdp::{types::JsFloat, Network::Cookie};
 use reqwest::{
     header::{HeaderMap, HeaderValue, COOKIE},
     Client,
 };
-use rust_socketio::{asynchronous::ClientBuilder, Payload};
 use serde::{Deserialize, Serialize};
 use soup::prelude::*;
-use std::{os::unix::thread, thread::sleep, time};
 
 pub const BASE_URL: &str = "https://www.overleaf.com";
 pub const LOGIN_URL: &str = "https://www.overleaf.com/login";
@@ -130,33 +127,36 @@ impl OverleafClient {
 
     // Fetch specified project info.
     pub async fn get_project_info(&self, project_id: &String) -> Result<ProjectInfo> {
-        println!("Getting project info!!!");
-
-        let socket = ClientBuilder::new(BASE_URL)
-            .namespace(format!("projectId={}", project_id))
-            .opening_header(
-                "Cookie",
-                format!(
-                    "{}={}",
-                    self.session_info.session_cookie.name, self.session_info.session_cookie.value
-                ),
-            )
-            .on("joinProjectResponse", |payload, _| {
-                async move { println!("{:?}", payload) }.boxed()
-            })
-            .connect()
-            .await
-            .expect("Socket IO Connection failed");
-
-        println!("Connected, now going to sleep... zzzz....");
-
-        sleep(time::Duration::from_secs(20));
-
-        socket.disconnect().await.expect("Disconnect failed");
-
         Ok(ProjectInfo {
-            root_folder_id: "fake_id".to_owned(),
+            root_folder_id: format!("fake_{}", project_id),
         })
+        // println!("Getting project info!!!");
+        //
+        // let socket = ClientBuilder::new(BASE_URL)
+        //     .namespace(format!("projectId={}", project_id))
+        //     .opening_header(
+        //         "Cookie",
+        //         format!(
+        //             "{}={}",
+        //             self.session_info.session_cookie.name, self.session_info.session_cookie.value
+        //         ),
+        //     )
+        //     .on("joinProjectResponse", |payload, _| {
+        //         async move { println!("{:?}", payload) }.boxed()
+        //     })
+        //     .connect()
+        //     .await
+        //     .expect("Socket IO Connection failed");
+        //
+        // println!("Connected, now going to sleep... zzzz....");
+        //
+        // sleep(time::Duration::from_secs(20));
+        //
+        // socket.disconnect().await.expect("Disconnect failed");
+        //
+        // Ok(ProjectInfo {
+        //     root_folder_id: "fake_id".to_owned(),
+        // })
     }
 
     // Download specified project as zip.
