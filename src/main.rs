@@ -40,7 +40,7 @@ enum Commands {
 async fn main() -> Result<()> {
     env_logger::Builder::new()
         .format(custom_log_format)
-        .filter(None, LevelFilter::Info)
+        .filter_level(LevelFilter::Info)
         .init();
 
     let cli = Cli::parse();

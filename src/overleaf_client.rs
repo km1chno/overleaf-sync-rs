@@ -1,13 +1,15 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use bytes::Bytes;
 use chrono::Utc;
 use headless_chrome::protocol::cdp::{types::JsFloat, Network::Cookie};
+use log::info;
 use reqwest::{
     header::{HeaderMap, HeaderValue, COOKIE},
     Client,
 };
 use serde::{Deserialize, Serialize};
 use soup::prelude::*;
+use std::process::{Command, ExitStatus};
 
 pub const BASE_URL: &str = "https://www.overleaf.com";
 pub const LOGIN_URL: &str = "https://www.overleaf.com/login";
@@ -127,6 +129,27 @@ impl OverleafClient {
 
     // Fetch specified project info.
     pub async fn get_project_info(&self, project_id: &String) -> Result<ProjectInfo> {
+        info!("Pulling project information for project_id {project_id}.");
+
+        let status = Command::new("node")
+            .env("DEBUG", "*")
+            .args([
+                "/Users/katzper/overleaf-sync-rs/socketio-client/client.js",
+                self.session_info.session_cookie.value.as_str(),
+                project_id.as_str(),
+            ])
+            .status()
+            .context(format!(
+                "Failed to obtain project info for project {project_id}."
+            ))?;
+
+        if !status.success() {
+            bail!(format!(
+                "Failed to obtain project info for project {project_id}. The socket.io client subprocess exited with code {}.", 
+                status.code().unwrap_or(-1)
+            ))
+        }
+
         Ok(ProjectInfo {
             root_folder_id: format!("fake_{}", project_id),
         })

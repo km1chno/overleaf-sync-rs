@@ -185,6 +185,9 @@ pub async fn push_files(olsync_dir: &PathBuf, files: &[String]) -> Result<()> {
     let session_info = get_session_info(olsync_dir)?;
     let overleaf_client = OverleafClient::new(session_info)?;
     let project_name = &get_project_name(olsync_dir)?;
+
+    // TODO: perhaps save project_id in cache along with the name. It should change ever right?
+    //   We then dont have to pull it all the time.
     let project = overleaf_client.get_project(project_name).await?;
 
     overleaf_client.get_project_info(&project.id).await?;
