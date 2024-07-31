@@ -1,14 +1,19 @@
+pub mod custom_log;
 pub mod login_browser;
 pub mod overleaf_client;
 pub mod repository;
 
-use crate::repository::{
-    create_local_backup, download_project, get_olsync_directory, get_project_dir,
-    init_ols_repository, is_ols_repository, push_files,
+use crate::{
+    custom_log::custom_log_format,
+    repository::{
+        create_local_backup, download_project, get_olsync_directory, get_project_dir,
+        init_ols_repository, is_ols_repository, push_files,
+    },
 };
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use log::{error, info, LevelFilter};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -32,20 +37,25 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::Builder::new()
+        .format(custom_log_format)
+        .filter(None, LevelFilter::Info)
+        .init();
+
     let cli = Cli::parse();
 
     match &cli.command {
         Some(Commands::Clone { name }) => match clone_action(name).await {
-            Ok(()) => println!("Successfully cloned project {name}."),
-            Err(err) => eprintln!("{err}\nFailed to clone project {name}."),
+            Ok(()) => success!("Cloned project {name}."),
+            Err(err) => error!("Failed to clone project {name} with the following error:\n{err}"),
         },
         Some(Commands::Push { files }) => match push_action(files).await {
-            Ok(()) => println!("Successfully pushed all files."),
-            Err(err) => eprintln!("{err}\nFailed to push some files."),
+            Ok(()) => success!("Pushed all files."),
+            Err(err) => error!("Failed to push some files with the following error:\n{err}"),
         },
         Some(Commands::Pull) => match pull_action().await {
-            Ok(()) => println!("Successfully pulled current project state from Overleaf."),
-            Err(err) => eprintln!("{err}\nFailed to pull the project."),
+            Ok(()) => success!("Pulled current project state from Overleaf."),
+            Err(err) => error!("Failed to pull the project with the following error:\n{err}"),
         },
         None => {}
     }
@@ -73,7 +83,7 @@ async fn clone_action(project_name: &String) -> Result<()> {
 async fn push_action(files: &[String]) -> Result<()> {
     files
         .iter()
-        .for_each(|file| println!("Pushing {file}... PLACEHOLDER"));
+        .for_each(|file| info!("Pushing {file}... PLACEHOLDER"));
 
     if !is_ols_repository() {
         bail!("Not a olsync repository! Clone a project before pushing.")

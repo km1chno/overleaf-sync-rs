@@ -6,6 +6,7 @@ use crate::{
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use fs_extra::dir::CopyOptions;
+use log::{info, warn};
 use std::io::Cursor;
 use std::{env, path::Path};
 use std::{
@@ -115,7 +116,7 @@ pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
     let project_dir = get_project_dir(olsync_dir)?;
 
     if !matches!(fs::exists(project_dir.clone()), Ok(true)) {
-        println!("WARN: No local project found. Not backup created.");
+        warn!("No local project found. Not backup created.");
         return Ok(());
     }
 
@@ -126,7 +127,7 @@ pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
     );
     let bak_path = olsync_dir.join(bak_name);
 
-    println!(
+    info!(
         "Creating local backup in {}",
         bak_path.to_str().unwrap_or("INVALID PATH")
     );
@@ -168,8 +169,6 @@ pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result
 }
 
 pub async fn push_files(olsync_dir: &PathBuf, files: &[String]) -> Result<()> {
-    print!("pushing {:?}", files);
-
     let session_info = get_session_info(olsync_dir)?;
     let overleaf_client = OverleafClient::new(session_info);
     let project_name = &get_project_name(olsync_dir)?;
