@@ -69,7 +69,7 @@ pub struct OverleafClient {
 }
 
 impl OverleafClient {
-    pub fn new(session_info: SessionInfo) -> Self {
+    pub fn new(session_info: SessionInfo) -> Result<Self> {
         let mut headers = HeaderMap::new();
 
         headers.insert(
@@ -79,18 +79,18 @@ impl OverleafClient {
                     .map(|cookie| format!("{}={}", cookie.name, cookie.value))
                     .join(";"),
             )
-            .expect("Failed to build default headers for Overleaf client."),
+            .context("Failed to build default headers for Overleaf client.")?,
         );
 
         let reqwest_client = reqwest::Client::builder()
             .default_headers(headers)
             .build()
-            .expect("Failed to build reqwest client.");
+            .context("Failed to build reqwest client.")?;
 
-        Self {
+        Ok(Self {
             session_info,
             reqwest_client,
-        }
+        })
     }
 
     // Fetch all projects.
@@ -108,7 +108,7 @@ impl OverleafClient {
             .attr("name", "ol-prefetchedProjectsBlob")
             .find()
             .and_then(|tag| tag.get("content"))
-            .expect("Failed to retrieve list of projects.");
+            .context("Failed to retrieve list of projects.")?;
 
         serde_json::from_str(projects_list_content.as_str())
             .context("Failed to parse list of projects.")

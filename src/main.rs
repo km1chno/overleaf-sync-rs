@@ -2,6 +2,7 @@ pub mod custom_log;
 pub mod login_browser;
 pub mod overleaf_client;
 pub mod repository;
+pub mod utils;
 
 use crate::{
     custom_log::custom_log_format,
@@ -81,9 +82,7 @@ async fn clone_action(project_name: &String) -> Result<()> {
 
 // Push files to Overleaf. Currently only files in root project directory are supported.
 async fn push_action(files: &[String]) -> Result<()> {
-    files
-        .iter()
-        .for_each(|file| info!("Pushing {file}... PLACEHOLDER"));
+    info!("Pushing list of files {:?}.", files);
 
     if !is_ols_repository() {
         bail!("Not a olsync repository! Clone a project before pushing.")
