@@ -1,5 +1,5 @@
 use crate::{
-    login_browser::launch_login_browser,
+    login::login,
     overleaf_client::{OverleafClient, SessionInfo},
     utils::path_to_str,
 };
@@ -86,15 +86,22 @@ fn save_session_info_to_file(olsync_dir: &PathBuf, session_info: &SessionInfo) -
 
 // Read cached session info or spawn browser to login and
 // save new info in .olsync/olauth.
-fn get_session_info(olsync_dir: &PathBuf) -> Result<SessionInfo> {
-    get_session_info_from_file(olsync_dir)
-        .map(Ok)
-        .unwrap_or_else(|| {
-            warn!("Unable to detect cached session information. Opening browser for manual login.");
-            let session_info = launch_login_browser()?;
-            save_session_info_to_file(olsync_dir, &session_info)?;
-            Ok(session_info)
-        })
+async fn get_session_info(olsync_dir: &PathBuf) -> Result<SessionInfo> {
+    let mut session_info = get_session_info_from_file(olsync_dir);
+
+    if session_info.is_none() {
+        warn!("Unable to detect cached session information. Opening browser for manual login.");
+
+        session_info = login().await.ok();
+
+        if session_info.is_none() {
+            bail!("Failed to obtain session info from login browser.")
+        }
+
+        save_session_info_to_file(olsync_dir, &session_info.clone().unwrap())?;
+    }
+
+    Ok(session_info.unwrap())
 }
 
 // Get current repository project name.
@@ -146,7 +153,7 @@ pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
 pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result<()> {
     info!("Downloading project into {}.", path_to_str(target_dir));
 
-    let session_info = get_session_info(olsync_dir)?;
+    let session_info = get_session_info(olsync_dir).await?;
     let overleaf_client = OverleafClient::new(session_info)?;
     let project_name = &get_project_name(olsync_dir)?;
     let project = overleaf_client.get_project(project_name).await?;
@@ -182,11 +189,11 @@ pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result
 }
 
 pub async fn push_files(olsync_dir: &PathBuf, files: &[String]) -> Result<()> {
-    let session_info = get_session_info(olsync_dir)?;
+    let session_info = get_session_info(olsync_dir).await?;
     let overleaf_client = OverleafClient::new(session_info)?;
     let project_name = &get_project_name(olsync_dir)?;
 
-    // TODO: perhaps save project_id in cache along with the name. It should change ever right?
+    // TODO: perhaps save project_id in cache along with the name. It should not change ever right?
     //   We then dont have to pull it all the time.
     let project = overleaf_client.get_project(project_name).await?;
 

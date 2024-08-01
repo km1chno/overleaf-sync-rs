@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use chrono::Utc;
 use headless_chrome::protocol::cdp::{types::JsFloat, Network::Cookie};
-use log::{error, info};
+use log::info;
 use reqwest::{
     header::{HeaderMap, HeaderValue, COOKIE},
     Client,
@@ -11,15 +11,9 @@ use serde::{Deserialize, Serialize};
 use soup::prelude::*;
 use std::process::Command;
 
-pub const BASE_URL: &str = "https://www.overleaf.com";
-pub const LOGIN_URL: &str = "https://www.overleaf.com/login";
-pub const PROJECTS_URL: &str = "https://www.overleaf.com/project";
-pub const DOWNLOAD_PROJECT_URL: &str = "https://www.overleaf.com/project/{}/download/zip";
+use crate::constants::{DOWNLOAD_PROJECT_URL, PROJECTS_URL};
 
-pub const SESSION_COOKIE_NAME: &str = "overleaf_session2";
-pub const GCLB_COOKIE_NAME: &str = "GCLB";
-
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OlCookie {
     pub name: String,
     pub value: String,
@@ -40,7 +34,7 @@ impl OlCookie {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SessionInfo {
     pub session_cookie: OlCookie,
     pub gclb_cookie: OlCookie,
@@ -85,7 +79,7 @@ impl OverleafClient {
         headers.insert(
             COOKIE,
             HeaderValue::from_str(
-                &[&session_info.session_cookie, &session_info.gclb_cookie]
+                &[&session_info.session_cookie]
                     .map(|cookie| format!("{}={}", cookie.name, cookie.value))
                     .join(";"),
             )
