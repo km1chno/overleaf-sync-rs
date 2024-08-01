@@ -1,6 +1,7 @@
 [package]
 name = "olsync"
 version = "0.1.0"
+authors = ["Katzper Michno katzper.michno@gmail.com"]
 edition = "2021"
 
 [dependencies]
