@@ -190,7 +190,9 @@ pub async fn push_files(olsync_dir: &PathBuf, files: &[String]) -> Result<()> {
     //   We then dont have to pull it all the time.
     let project = overleaf_client.get_project(project_name).await?;
 
-    overleaf_client.get_project_info(&project.id).await?;
+    let project_details = overleaf_client.get_project_details(&project.id).await?;
+
+    info!("Root folder is {}.", project_details.root_folder[0].id);
 
     Ok(())
 }

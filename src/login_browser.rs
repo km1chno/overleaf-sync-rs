@@ -43,7 +43,9 @@ pub fn launch_login_browser() -> Result<SessionInfo> {
     //     .cloned()
     //     .map(OlCookie::from_chrome_cookie)?;
 
-    // Do I even need it?
+    // TODO: YES, WE NEED IT, IT IS CRUCIAL.
+    // check out how this guy does it:
+    // https://github.com/zzjjzzgggg/overleaf-sync/commit/887fdd8e5709ca3f02fc29973ece84dbfe6f9430.
     let gclb_cookie = OlCookie {
         name: "GCLB".to_owned(),
         value: "abc".to_owned(),

@@ -1,6 +1,0 @@
-{
-  "type": "module",
-  "dependencies": {
-    "socket.io.client": "github:overleaf/socket.io-client#0.9.17-overleaf-5"
-  }
-}

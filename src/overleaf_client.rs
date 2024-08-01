@@ -1,15 +1,15 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use chrono::Utc;
 use headless_chrome::protocol::cdp::{types::JsFloat, Network::Cookie};
-use log::info;
+use log::{error, info};
 use reqwest::{
     header::{HeaderMap, HeaderValue, COOKIE},
     Client,
 };
 use serde::{Deserialize, Serialize};
 use soup::prelude::*;
-use std::process::{Command, ExitStatus};
+use std::process::Command;
 
 pub const BASE_URL: &str = "https://www.overleaf.com";
 pub const LOGIN_URL: &str = "https://www.overleaf.com/login";
@@ -61,8 +61,16 @@ pub struct ProjectsList {
     pub projects: Vec<Project>,
 }
 
-pub struct ProjectInfo {
-    pub root_folder_id: String,
+#[derive(Debug, Deserialize)]
+pub struct RootFolder {
+    #[serde(rename = "_id")]
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDetails {
+    pub root_folder: Vec<RootFolder>,
 }
 
 pub struct OverleafClient {
@@ -112,8 +120,11 @@ impl OverleafClient {
             .and_then(|tag| tag.get("content"))
             .context("Failed to retrieve list of projects.")?;
 
-        serde_json::from_str(projects_list_content.as_str())
-            .context("Failed to parse list of projects.")
+        serde_json::from_str(projects_list_content.as_str()).map_err(|e| {
+            anyhow!(format!(
+                "Failed to deserialize projects list with error: {e}."
+            ))
+        })
     }
 
     // Fetch specified project.
@@ -128,58 +139,35 @@ impl OverleafClient {
     }
 
     // Fetch specified project info.
-    pub async fn get_project_info(&self, project_id: &String) -> Result<ProjectInfo> {
-        info!("Pulling project information for project_id {project_id}.");
+    pub async fn get_project_details(&self, project_id: &String) -> Result<ProjectDetails> {
+        info!("Fetching project details for project_id {project_id}.");
 
-        let status = Command::new("node")
-            .env("DEBUG", "*")
-            .args([
-                "/Users/katzper/overleaf-sync-rs/socketio-client/client.js",
-                self.session_info.session_cookie.value.as_str(),
-                project_id.as_str(),
-            ])
-            .status()
-            .context(format!(
-                "Failed to obtain project info for project {project_id}."
-            ))?;
+        let output = String::from_utf8(
+            Command::new("olsync-rs-socketio-client")
+                .args([
+                    self.session_info.gclb_cookie.value.as_str(),
+                    self.session_info.session_cookie.value.as_str(),
+                    project_id.as_str(),
+                ])
+                .output()
+                .context(format!(
+                    "Failed to obtain project info for project {project_id}."
+                ))?
+                .stdout,
+        )
+        .context("Invalid UTF-8")?
+        .replace("'", "\"")
+        .replace("None", "null")
+        .replace("True", "true")
+        .replace("False", "false");
 
-        if !status.success() {
-            bail!(format!(
-                "Failed to obtain project info for project {project_id}. The socket.io client subprocess exited with code {}.", 
-                status.code().unwrap_or(-1)
+        info!("Successfully fetched project details.");
+
+        serde_json::from_str(output.as_str()).map_err(|e| {
+            anyhow!(format!(
+                "Failed to deserialize project details with error: {e}."
             ))
-        }
-
-        Ok(ProjectInfo {
-            root_folder_id: format!("fake_{}", project_id),
         })
-        // println!("Getting project info!!!");
-        //
-        // let socket = ClientBuilder::new(BASE_URL)
-        //     .namespace(format!("projectId={}", project_id))
-        //     .opening_header(
-        //         "Cookie",
-        //         format!(
-        //             "{}={}",
-        //             self.session_info.session_cookie.name, self.session_info.session_cookie.value
-        //         ),
-        //     )
-        //     .on("joinProjectResponse", |payload, _| {
-        //         async move { println!("{:?}", payload) }.boxed()
-        //     })
-        //     .connect()
-        //     .await
-        //     .expect("Socket IO Connection failed");
-        //
-        // println!("Connected, now going to sleep... zzzz....");
-        //
-        // sleep(time::Duration::from_secs(20));
-        //
-        // socket.disconnect().await.expect("Disconnect failed");
-        //
-        // Ok(ProjectInfo {
-        //     root_folder_id: "fake_id".to_owned(),
-        // })
     }
 
     // Download specified project as zip.
