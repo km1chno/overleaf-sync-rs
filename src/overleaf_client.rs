@@ -121,7 +121,7 @@ impl OverleafClient {
         })
     }
 
-    // Fetch specified project.
+    // Fetch specified project by name.
     pub async fn get_project_by_name(&self, project_name: &String) -> Result<Project> {
         self.get_all_projects()
             .await?
@@ -130,6 +130,17 @@ impl OverleafClient {
             .filter(|project| project.name == *project_name)
             .last()
             .context(format!("Project {project_name} not found."))
+    }
+
+    // Fetch specified project by id.
+    pub async fn get_project_by_id(&self, project_id: &String) -> Result<Project> {
+        self.get_all_projects()
+            .await?
+            .projects
+            .into_iter()
+            .filter(|project| project.id == *project_id)
+            .last()
+            .context(format!("Project with id {project_id} not found."))
     }
 
     // Fetch specified project info.

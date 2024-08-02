@@ -7,9 +7,10 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use fs_extra::dir::CopyOptions;
-use log::{info, warn};
-use std::io::Cursor;
+use log::info;
+use std::io::BufReader;
 use std::{env, path::Path};
+use std::{fs::File, io::Cursor};
 use std::{
     fs::{self},
     path::PathBuf,
@@ -41,52 +42,58 @@ pub fn is_olsync_repository() -> bool {
     get_olsync_directory().is_some()
 }
 
-// Initialize new .olsync directory.
-pub fn init_olsync_repository(project: &Project) -> Result<()> {
+// Initialize new olsync repository in ./{project.name} and return its path.
+pub fn init_olsync_repository(project: &Project) -> Result<PathBuf> {
     info!(
-        "Initializing empty olsync repository for project {}.",
+        "Initializing empty olsync repository for project with id {}.",
         project.id
     );
 
     if is_olsync_repository() {
-        bail!("Already an olsync repository.");
+        bail!("This already is an olsync repository!");
     }
 
-    fs::create_dir(".olsync")?;
-    fs::write(".olsync/name", serde_json::to_string(project)?)?;
+    let repo_dir = env::current_dir()?.join(project.name.clone());
 
-    Ok(())
+    fs::create_dir_all(repo_dir.join(".olsync"))?;
+    fs::write(
+        repo_dir.join(".olsync").join("projectinfo"),
+        serde_json::to_string(project)?,
+    )?;
+
+    Ok(repo_dir)
 }
 
-// Get current repository project name.
-fn get_project_name(olsync_dir: &PathBuf) -> Result<String> {
-    fs::read_to_string(PathBuf::from(olsync_dir).join("name"))
-        .context("Failed to read project name.")
+// Get current repository project info.
+pub fn get_project_info() -> Result<Project> {
+    get_olsync_directory()
+        .map(|dir| dir.join("projectinfo"))
+        .and_then(|project_info_path| File::open(project_info_path).ok())
+        .and_then(|f| serde_json::from_reader(BufReader::new(f)).ok())
+        .ok_or(anyhow!(
+            "Failed to obtain project info from projectinfo file."
+        ))
 }
 
-// Get project directory.
-pub fn get_project_dir() -> Result<PathBuf> {
+// Get repository root directory.
+pub fn get_repo_root() -> Result<PathBuf> {
     return get_olsync_directory()
-        .map(|s| s.parent().map(PathBuf::from))
-        .flatten()
+        .and_then(|s| s.parent().map(PathBuf::from))
         .ok_or_else(|| anyhow!("Failed to obtain project directory."));
 }
 
-// Create a zipped, timestamp annotated backup of current local project.
-pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
-    let project_dir = get_project_dir()?;
-
-    if !matches!(fs::exists(project_dir.clone()), Ok(true)) {
-        warn!("No local project files found. Not backup created.");
-        return Ok(());
-    }
+// Create a timestamp annotated backup of local project.
+pub fn create_local_backup() -> Result<()> {
+    let repo_root = get_repo_root()?;
 
     let bak_name = &format!(
         "{}-{}.local.bak",
-        &get_project_name(olsync_dir)?,
+        &get_project_info()?.name,
         Utc::now().timestamp_millis()
     );
-    let bak_path = olsync_dir.join(bak_name);
+    let bak_path = get_olsync_directory()
+        .context("Failed to obtain .olsync directory.")?
+        .join(bak_name);
 
     info!(
         "Creating local backup in {}.",
@@ -94,57 +101,93 @@ pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
     );
 
     fs::create_dir(bak_path.clone())?;
-    fs_extra::dir::copy(project_dir, bak_path, &CopyOptions::new())?;
+
+    let items_in_root = fs::read_dir(repo_root)?;
+
+    for item in items_in_root {
+        let path = item.unwrap().path();
+        let name = path.file_name().unwrap();
+
+        if name != ".olsync" {
+            fs_extra::copy_items(
+                &[path.to_str().unwrap()],
+                bak_path.clone(),
+                &CopyOptions::new(),
+            )?;
+        }
+    }
 
     Ok(())
 }
 
-// Download project from Overleaf in zip and save in target directory. It will be extracted if
-// target_dir extension is not 'zip'. If target_dir already exists, it will be overriden.
+// Wipes everything in root directory except .olsync.
+pub fn wipe_project() -> Result<()> {
+    let repo_root = get_repo_root()?;
+
+    info!("Wiping everything in repo root directory.");
+
+    let items_in_root = fs::read_dir(repo_root)?;
+
+    for item in items_in_root {
+        let path = item.unwrap().path();
+        let name = path.file_name().unwrap();
+
+        if name != ".olsync" {
+            fs_extra::remove_items(&[path.to_str().unwrap()])?;
+        }
+    }
+
+    Ok(())
+}
+
+// Download project from Overleaf in zip and save in target directory as {archive_name.zip}.
+// If archive_name is None, the archive will be extracted.
 pub async fn download_project(
     overleaf_client: &OverleafClient,
-    project_id: String,
+    project_id: &String,
     target_dir: &Path,
+    archive_name: Option<String>,
 ) -> Result<()> {
-    info!(
-        "Downloading project {project_id} into {}.",
-        path_to_str(target_dir)
-    );
+    info!("Downloading project {project_id}.");
 
     let archive: Vec<u8> = overleaf_client
-        .download_project_zip(project_id)
+        .download_project_zip(project_id.clone())
         .await?
         .to_vec();
 
-    // If target_dir has .zip extension, do not extract.
-    if matches!(target_dir.extension().and_then(|e| e.to_str()), Some("zip")) {
-        info!("Not extracting downloaded archive since target has zip extension.");
+    match archive_name {
+        Some(name) => {
+            let archive_name = format!("{}.zip", name);
 
-        fs::write(target_dir, archive).context(format!(
-            "Failed to save downloaded project to {}.",
-            path_to_str(target_dir)
-        ))
-    } else {
-        info!("Extracting downloaded archive.");
+            info!("Saving as {archive_name}");
 
-        // Wipe out current contents of target_dir before extracting.
-        if matches!(fs::exists(target_dir), Ok(true)) {
-            fs::remove_dir_all(target_dir)?;
-        }
-
-        zip_extract::extract(Cursor::new(archive), target_dir, true).or_else(|_| {
-            bail!(
-                "Failed to extract downloaded project zip file to {}.",
+            fs::write(PathBuf::from(target_dir).join(name), archive).context(format!(
+                "Failed to save downloaded project to {}.",
                 path_to_str(target_dir)
-            )
-        })
+            ))
+        }
+        None => {
+            info!(
+                "Extracting downloaded project into {}.",
+                path_to_str(target_dir)
+            );
+
+            zip_extract::extract(Cursor::new(archive), target_dir, true).or_else(|_| {
+                bail!(
+                    "Failed to extract downloaded project zip file to {}.",
+                    path_to_str(target_dir)
+                )
+            })
+        }
     }
 }
 
-pub async fn push_files(olsync_dir: &PathBuf, files: Vec<&String>) -> Result<()> {
+pub async fn push_files(files: Vec<&String>) -> Result<()> {
+    info!("Pushing {:?}", files);
+
     let session_info = get_session_info().await?;
     let overleaf_client = OverleafClient::new(session_info)?;
-    let project_name = &get_project_name(olsync_dir)?;
+    let project_name = &get_project_info()?.name;
 
     let project = overleaf_client.get_project_by_name(project_name).await?;
 
