@@ -41,7 +41,7 @@ pub struct SessionInfo {
     pub csrf_token: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     pub id: String,

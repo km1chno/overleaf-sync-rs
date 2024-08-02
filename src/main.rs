@@ -11,7 +11,7 @@ use crate::{
     overleaf_client::{OverleafClient, Project},
     repository::{
         create_local_backup, download_project, get_olsync_directory, get_project_dir,
-        init_ols_repository, is_olsync_repository, push_files,
+        init_olsync_repository, is_olsync_repository, push_files,
     },
 };
 
@@ -134,13 +134,12 @@ async fn main() -> Result<()> {
 async fn clone_by_name_action(project_name: &String) -> Result<()> {
     let session_info = get_session_info().await?;
     let overleaf_client = OverleafClient::new(session_info)?;
+
     let project: Project = overleaf_client.get_project_by_name(project_name).await?;
 
-    init_ols_repository(project_name)?;
+    init_olsync_repository(&project)?;
 
-    let olsync_dir = get_olsync_directory().with_context(|| "Failed to find .olsync directory.")?;
-
-    download_project(&olsync_dir, &get_project_dir(&olsync_dir)?).await
+    download_project(&overleaf_client, project.id, get_project_dir()?.as_path()).await
 }
 
 // Clone project by id into current directory.

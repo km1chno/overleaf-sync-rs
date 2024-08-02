@@ -1,6 +1,10 @@
-use crate::{auth::get_session_info, overleaf_client::OverleafClient, utils::path_to_str};
+use crate::{
+    auth::get_session_info,
+    overleaf_client::{OverleafClient, Project},
+    utils::path_to_str,
+};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use fs_extra::dir::CopyOptions;
 use log::{info, warn};
@@ -37,16 +41,19 @@ pub fn is_olsync_repository() -> bool {
     get_olsync_directory().is_some()
 }
 
-// Initialize empty .olsync directory.
-pub fn init_ols_repository(project_name: &String) -> Result<()> {
-    info!("Initializing empty olsync repository.");
+// Initialize new .olsync directory.
+pub fn init_olsync_repository(project: &Project) -> Result<()> {
+    info!(
+        "Initializing empty olsync repository for project {}.",
+        project.id
+    );
 
     if is_olsync_repository() {
         bail!("Already an olsync repository.");
     }
 
     fs::create_dir(".olsync")?;
-    fs::write(".olsync/name", project_name)?;
+    fs::write(".olsync/name", serde_json::to_string(project)?)?;
 
     Ok(())
 }
@@ -57,20 +64,17 @@ fn get_project_name(olsync_dir: &PathBuf) -> Result<String> {
         .context("Failed to read project name.")
 }
 
-// Get project directory, equal to {olsync_dir}/../{project_name}. Does not check whether the
-// directory exists!
-pub fn get_project_dir(olsync_dir: &PathBuf) -> Result<PathBuf> {
-    let project_name = &get_project_name(olsync_dir)?;
-    let root_dir = olsync_dir
-        .parent()
-        .with_context(|| "Could not find repository root directory.")?;
-
-    Ok(root_dir.join(project_name))
+// Get project directory.
+pub fn get_project_dir() -> Result<PathBuf> {
+    return get_olsync_directory()
+        .map(|s| s.parent().map(PathBuf::from))
+        .flatten()
+        .ok_or_else(|| anyhow!("Failed to obtain project directory."));
 }
 
 // Create a zipped, timestamp annotated backup of current local project.
 pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
-    let project_dir = get_project_dir(olsync_dir)?;
+    let project_dir = get_project_dir()?;
 
     if !matches!(fs::exists(project_dir.clone()), Ok(true)) {
         warn!("No local project files found. Not backup created.");
@@ -97,16 +101,18 @@ pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
 
 // Download project from Overleaf in zip and save in target directory. It will be extracted if
 // target_dir extension is not 'zip'. If target_dir already exists, it will be overriden.
-pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result<()> {
-    info!("Downloading project into {}.", path_to_str(target_dir));
-
-    let session_info = get_session_info().await?;
-    let overleaf_client = OverleafClient::new(session_info)?;
-    let project_name = &get_project_name(olsync_dir)?;
-    let project = overleaf_client.get_project_by_name(project_name).await?;
+pub async fn download_project(
+    overleaf_client: &OverleafClient,
+    project_id: String,
+    target_dir: &Path,
+) -> Result<()> {
+    info!(
+        "Downloading project {project_id} into {}.",
+        path_to_str(target_dir)
+    );
 
     let archive: Vec<u8> = overleaf_client
-        .download_project_zip(project.id)
+        .download_project_zip(project_id)
         .await?
         .to_vec();
 
