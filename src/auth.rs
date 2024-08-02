@@ -1,15 +1,21 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use cookie::Cookie;
 use headless_chrome::browser::{Browser, LaunchOptionsBuilder};
-use log::info;
+use log::{info, warn};
 use reqwest::header::{HeaderMap, HeaderValue, COOKIE, SET_COOKIE};
-use std::time::Duration;
+use std::io::BufReader;
+use std::{
+    fs::{self, File},
+    path::PathBuf,
+    time::Duration,
+};
 
 use crate::{
     constants::{
         GCLB_COOKIE_NAME, LOGIN_URL, ONE_HOUR_IN_SECONDS, SESSION_COOKIE_NAME, SOCKET_URL,
     },
     overleaf_client::{OlCookie, SessionInfo},
+    utils::path_to_str,
 };
 
 // Request GCLB cookie.
@@ -80,4 +86,60 @@ pub async fn login() -> Result<SessionInfo> {
         gclb_cookie,
         csrf_token,
     })
+}
+
+// Get PathBuf pointing to ~/.olsyncinfo (it may not exist)
+fn get_olsyncinfo_path() -> Result<PathBuf> {
+    dirs::home_dir()
+        .map(|p| p.join(".olsyncinfo"))
+        .context("Failed to retrieve home directory.")
+}
+
+// Try to retrieve cached session info from ~/.olsyncinfo.
+fn get_session_info_from_file() -> Option<SessionInfo> {
+    info!("Trying to retrieve cached session information from ~/.olsyncinfo.");
+
+    let info_path = get_olsyncinfo_path().ok()?;
+
+    match File::open(info_path) {
+        Ok(f) => serde_json::from_reader(BufReader::new(f))
+            .ok()
+            .filter(|i: &SessionInfo| !i.session_cookie.has_expired()),
+        Err(_) => None,
+    }
+}
+
+// Save session info to ~/.olsyncinfo.
+fn save_session_info_to_file(session_info: &SessionInfo) -> Result<()> {
+    info!("Saving session information to ~/.olsyncinfo.");
+
+    let serialized_info = serde_json::to_string(session_info)?;
+    let info_path = get_olsyncinfo_path()?;
+
+    fs::write(info_path.clone(), serialized_info).or_else(|_| {
+        bail!(
+            "Failed to save session info to {}",
+            path_to_str(info_path.as_path())
+        )
+    })
+}
+
+// Read cached session info or spawn browser to login and
+// save new info in cache.
+pub async fn get_session_info() -> Result<SessionInfo> {
+    let mut session_info = get_session_info_from_file();
+
+    if session_info.is_none() {
+        warn!("Unable to detect cached session information. Opening browser for manual login.");
+
+        session_info = login().await.ok();
+
+        if session_info.is_none() {
+            bail!("Failed to obtain session info from login browser.")
+        }
+
+        save_session_info_to_file(&session_info.clone().unwrap())?;
+    }
+
+    Ok(session_info.unwrap())
 }

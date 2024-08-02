@@ -122,7 +122,7 @@ impl OverleafClient {
     }
 
     // Fetch specified project.
-    pub async fn get_project(&self, project_name: &String) -> Result<Project> {
+    pub async fn get_project_by_name(&self, project_name: &String) -> Result<Project> {
         self.get_all_projects()
             .await?
             .projects

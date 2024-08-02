@@ -1,8 +1,4 @@
-use crate::{
-    login::login,
-    overleaf_client::{OverleafClient, SessionInfo},
-    utils::path_to_str,
-};
+use crate::{auth::get_session_info, overleaf_client::OverleafClient, utils::path_to_str};
 
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
@@ -11,12 +7,11 @@ use log::{info, warn};
 use std::io::Cursor;
 use std::{env, path::Path};
 use std::{
-    fs::{self, File},
-    io::BufReader,
+    fs::{self},
     path::PathBuf,
 };
 
-// Returns .olsync directory in current repository. It traverses directory tree starting from
+// Returns .olsync directory in current repository. It traverses directory hierarchy starting from
 // currect directory and going upwards.
 pub fn get_olsync_directory() -> Option<PathBuf> {
     let mut current_dir = env::current_dir().ok();
@@ -38,7 +33,7 @@ pub fn get_olsync_directory() -> Option<PathBuf> {
 }
 
 // Check whether .olsync directory exists.
-pub fn is_ols_repository() -> bool {
+pub fn is_olsync_repository() -> bool {
     get_olsync_directory().is_some()
 }
 
@@ -46,7 +41,7 @@ pub fn is_ols_repository() -> bool {
 pub fn init_ols_repository(project_name: &String) -> Result<()> {
     info!("Initializing empty olsync repository.");
 
-    if is_ols_repository() {
+    if is_olsync_repository() {
         bail!("Already an olsync repository.");
     }
 
@@ -54,54 +49,6 @@ pub fn init_ols_repository(project_name: &String) -> Result<()> {
     fs::write(".olsync/name", project_name)?;
 
     Ok(())
-}
-
-// Try to retrieve cached session info from .olsync/olauth.
-fn get_session_info_from_file(olsync_dir: &PathBuf) -> Option<SessionInfo> {
-    info!("Trying to retrieve cached session information.");
-
-    let info_path = &PathBuf::from(olsync_dir).join("olauth");
-
-    match File::open(info_path) {
-        Ok(f) => {
-            let reader = BufReader::new(f);
-            serde_json::from_reader(reader)
-                .ok()
-                .filter(|i: &SessionInfo| !i.session_cookie.has_expired())
-        }
-        Err(_) => None,
-    }
-}
-
-// Save session info to .olsync/olauth.
-fn save_session_info_to_file(olsync_dir: &PathBuf, session_info: &SessionInfo) -> Result<()> {
-    info!("Saving session information to cache.");
-
-    let serialized_info = serde_json::to_string(session_info)?;
-    let info_path = &PathBuf::from(olsync_dir).join("olauth");
-
-    fs::write(info_path, serialized_info)
-        .or_else(|_| bail!("Failed to save session info to {}", path_to_str(info_path)))
-}
-
-// Read cached session info or spawn browser to login and
-// save new info in .olsync/olauth.
-async fn get_session_info(olsync_dir: &PathBuf) -> Result<SessionInfo> {
-    let mut session_info = get_session_info_from_file(olsync_dir);
-
-    if session_info.is_none() {
-        warn!("Unable to detect cached session information. Opening browser for manual login.");
-
-        session_info = login().await.ok();
-
-        if session_info.is_none() {
-            bail!("Failed to obtain session info from login browser.")
-        }
-
-        save_session_info_to_file(olsync_dir, &session_info.clone().unwrap())?;
-    }
-
-    Ok(session_info.unwrap())
 }
 
 // Get current repository project name.
@@ -153,10 +100,10 @@ pub fn create_local_backup(olsync_dir: &PathBuf) -> Result<()> {
 pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result<()> {
     info!("Downloading project into {}.", path_to_str(target_dir));
 
-    let session_info = get_session_info(olsync_dir).await?;
+    let session_info = get_session_info().await?;
     let overleaf_client = OverleafClient::new(session_info)?;
     let project_name = &get_project_name(olsync_dir)?;
-    let project = overleaf_client.get_project(project_name).await?;
+    let project = overleaf_client.get_project_by_name(project_name).await?;
 
     let archive: Vec<u8> = overleaf_client
         .download_project_zip(project.id)
@@ -188,14 +135,12 @@ pub async fn download_project(olsync_dir: &PathBuf, target_dir: &Path) -> Result
     }
 }
 
-pub async fn push_files(olsync_dir: &PathBuf, files: &[String]) -> Result<()> {
-    let session_info = get_session_info(olsync_dir).await?;
+pub async fn push_files(olsync_dir: &PathBuf, files: Vec<&String>) -> Result<()> {
+    let session_info = get_session_info().await?;
     let overleaf_client = OverleafClient::new(session_info)?;
     let project_name = &get_project_name(olsync_dir)?;
 
-    // TODO: perhaps save project_id in cache along with the name. It should not change ever right?
-    //   We then dont have to pull it all the time.
-    let project = overleaf_client.get_project(project_name).await?;
+    let project = overleaf_client.get_project_by_name(project_name).await?;
 
     let project_details = overleaf_client.get_project_details(&project.id).await?;
 
