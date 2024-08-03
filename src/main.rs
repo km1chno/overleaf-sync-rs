@@ -18,7 +18,7 @@ use crate::{
     utils::path_to_str,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Command};
 use log::{error, info, LevelFilter};
 
@@ -64,6 +64,13 @@ async fn main() {
                     Arg::new("no-backup")
                         .long("no-backup")
                         .help("Skip creating backup of local state before pulling")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .long("force")
+                        .short('f')
+                        .help("Skip confirm prompt")
                         .action(ArgAction::SetTrue),
                 ),
         )
@@ -124,10 +131,12 @@ async fn run_olsync(matches: ArgMatches) -> Result<()> {
             }
 
             let no_backup = matches.get_one::<bool>("no-backup").unwrap_or(&false);
+            let force = matches.get_one::<bool>("force").unwrap_or(&false);
 
-            match pull_action(no_backup).await {
-                Ok(()) => success!("Successfully pulled current project state from Overleaf!"),
+            match pull_action(no_backup, force).await {
+                Ok(true) => success!("Successfully pulled current project state from Overleaf!"),
                 Err(err) => bail!("Failed to pull the project with the following error:\n{err}"),
+                _ => {}
             }
         }
         _ => bail!("Unknown subcommand."),
@@ -175,18 +184,29 @@ async fn push_action(files: Vec<&String>) -> Result<()> {
 }
 
 // Pull the current state from remote.
-async fn pull_action(no_backup: &bool) -> Result<()> {
-    let session_info = get_session_info().await?;
-    let overleaf_client = OverleafClient::new(session_info)?;
+async fn pull_action(no_backup: &bool, force: &bool) -> Result<bool> {
+    let confirm = inquire::Confirm::new(
+        "Pulling project from Overleaf will override your local state. Do you want to continue?")
+        .with_help_message("If you proceed, your local project will be backed up (unless --no-backup option has been used).")
+        .with_default(false);
 
-    if !no_backup {
-        create_local_backup()?;
+    let ans = if *force { Ok(true) } else { confirm.prompt() };
+
+    if matches!(ans, Ok(true)) {
+        let session_info = get_session_info().await?;
+        let overleaf_client = OverleafClient::new(session_info)?;
+
+        if !no_backup {
+            create_local_backup()?;
+        }
+
+        let project = get_project_info()?;
+        let repo_root = get_repo_root()?;
+
+        wipe_project()?;
+
+        download_project(&overleaf_client, &project.id, &repo_root, None).await?;
     }
 
-    let project = get_project_info()?;
-    let repo_root = get_repo_root()?;
-
-    wipe_project()?;
-
-    download_project(&overleaf_client, &project.id, &repo_root, None).await
+    ans.map_err(|e| anyhow!("An error ocurred in prompt: {e}"))
 }
