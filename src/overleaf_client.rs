@@ -112,7 +112,7 @@ impl OverleafClient {
             .attr("name", "ol-prefetchedProjectsBlob")
             .find()
             .and_then(|tag| tag.get("content"))
-            .context("Failed to retrieve list of projects.")?;
+            .context("Failed to retrieve list of projects. Please try again.")?;
 
         serde_json::from_str(projects_list_content.as_str()).map_err(|e| {
             anyhow!(format!(
