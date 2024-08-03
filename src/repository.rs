@@ -53,6 +53,13 @@ pub fn init_olsync_repository(project: &Project) -> Result<PathBuf> {
 
     let repo_dir = env::current_dir()?.join(project.name.clone());
 
+    if fs::exists(repo_dir.clone())? {
+        bail!(
+            "Directory {} already exists.",
+            path_to_str(repo_dir.as_path())
+        )
+    }
+
     fs::create_dir_all(repo_dir.join(".olsync"))?;
     fs::write(
         repo_dir.join(".olsync").join("projectinfo"),
