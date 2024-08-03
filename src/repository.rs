@@ -1,5 +1,4 @@
 use crate::{
-    auth::get_session_info,
     custom_log::OlSpinner,
     overleaf_client::{OverleafClient, Project},
     utils::path_to_str,
@@ -91,36 +90,40 @@ pub fn get_repo_root() -> Result<PathBuf> {
 pub fn create_local_backup() -> Result<()> {
     let mut spinner = OlSpinner::new("Creating backup of local project.".to_owned());
 
-    let backup_result: Result<PathBuf, &str> = {
-        let repo_root = get_repo_root()?;
+    let backup_result: Result<PathBuf, Box<dyn std::error::Error>> = {
+        let backup_closure = || {
+            let repo_root = get_repo_root()?;
 
-        let bak_name = &format!(
-            "{}-{}.local.bak",
-            &get_project_info()?.name,
-            Utc::now().timestamp_millis()
-        );
-        let bak_path = get_olsync_directory()
-            .context("Failed to obtain .olsync directory.")?
-            .join(bak_name);
+            let bak_name = &format!(
+                "{}-{}.local.bak",
+                &get_project_info()?.name,
+                Utc::now().timestamp_millis()
+            );
+            let bak_path = get_olsync_directory()
+                .context("Failed to obtain .olsync directory.")?
+                .join(bak_name);
 
-        fs::create_dir(bak_path.clone())?;
+            fs::create_dir(bak_path.clone())?;
 
-        let items_in_root = fs::read_dir(repo_root)?;
+            let items_in_root = fs::read_dir(repo_root)?;
 
-        for item in items_in_root {
-            let path = item.unwrap().path();
-            let name = path.file_name().unwrap();
+            for item in items_in_root {
+                let path = item.unwrap().path();
+                let name = path.file_name().unwrap();
 
-            if name != ".olsync" {
-                fs_extra::copy_items(
-                    &[path.to_str().unwrap()],
-                    bak_path.clone(),
-                    &CopyOptions::new(),
-                )?;
+                if name != ".olsync" {
+                    fs_extra::copy_items(
+                        &[path.to_str().unwrap()],
+                        bak_path.clone(),
+                        &CopyOptions::new(),
+                    )?;
+                }
             }
-        }
 
-        Ok(bak_path)
+            Ok(bak_path)
+        };
+
+        backup_closure()
     };
 
     if let Ok(bak_path) = backup_result {
@@ -131,7 +134,7 @@ pub fn create_local_backup() -> Result<()> {
         Ok(())
     } else {
         spinner.stop_with_error("Failed to create backup of local project.".to_owned());
-        bail!(backup_result.err().unwrap())
+        bail!(format!("{}", backup_result.err().unwrap()))
     }
 }
 
@@ -168,23 +171,27 @@ pub async fn download_project(
     let mut spinner = OlSpinner::new("Downloading project.".to_owned());
 
     let download_result = {
-        let archive: Vec<u8> = overleaf_client
-            .download_project_zip(project_id.to_owned())
-            .await?
-            .to_vec();
+        let download_closure = || async {
+            let archive: Vec<u8> = overleaf_client
+                .download_project_zip(project_id.to_owned())
+                .await?
+                .to_vec();
 
-        match archive_name {
-            Some(name) => {
-                let file_name = format!("{}.zip", name);
+            match archive_name {
+                Some(name) => {
+                    let file_name = format!("{}.zip", name);
 
-                fs::write(PathBuf::from(target_dir).join(name), archive)
-                    .map(|()| format!("Saved project as {}.", file_name))
-                    .context("Failed to save downloaded project.".to_owned())
+                    fs::write(PathBuf::from(target_dir).join(name), archive)
+                        .map(|()| format!("Saved project as {}.", file_name))
+                        .context("Failed to save downloaded project.".to_owned())
+                }
+                None => zip_extract::extract(Cursor::new(archive), target_dir, true)
+                    .map(|()| "Downloaded and extracted project.".to_owned())
+                    .context("Failed to extract downloaded project zip file.".to_owned()),
             }
-            None => zip_extract::extract(Cursor::new(archive), target_dir, true)
-                .map(|()| "Downloaded and extracted project.".to_owned())
-                .context("Failed to extract downloaded project zip file.".to_owned()),
-        }
+        };
+
+        download_closure().await
     };
 
     if let Ok(message) = download_result {
@@ -196,18 +203,43 @@ pub async fn download_project(
     }
 }
 
-pub async fn push_files(files: Vec<&String>) -> Result<()> {
-    info!("Pushing {:?}", files);
+// Push list of files to Overleaf.
+pub async fn push_files(
+    overleaf_client: &OverleafClient,
+    project_id: &String,
+    files: Vec<&String>,
+) -> Result<()> {
+    let project_details = overleaf_client.get_project_details(project_id)?;
 
-    let session_info = get_session_info().await?;
-    let overleaf_client = OverleafClient::new(session_info)?;
-    let project_name = &get_project_info()?.name;
+    let root_path = get_repo_root()?;
 
-    let project = overleaf_client.get_project_by_name(project_name).await?;
+    for file_name in files {
+        let mut spinner = OlSpinner::new(format!("Uploading file {file_name}..."));
 
-    let project_details = overleaf_client.get_project_details(&project.id).await?;
+        let upload_result = {
+            let upload_closure = || async {
+                let file = fs::read(root_path.join(file_name))?;
 
-    info!("Root folder is {}.", project_details.root_folder[0].id);
+                overleaf_client
+                    .upload_file(
+                        project_id,
+                        &project_details.root_folder[0].id,
+                        file_name.to_owned(),
+                        file,
+                    )
+                    .await
+            };
+
+            upload_closure().await
+        };
+
+        if let Ok(()) = upload_result {
+            spinner.stop_with_success(format!("Uploaded file {file_name}."));
+        } else {
+            spinner.stop_with_error(format!("Failed to upload file {file_name}."));
+            bail!(upload_result.err().unwrap())
+        }
+    }
 
     Ok(())
 }

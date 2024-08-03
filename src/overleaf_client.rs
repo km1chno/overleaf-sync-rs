@@ -1,17 +1,19 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use chrono::Utc;
 use headless_chrome::protocol::cdp::{types::JsFloat, Network::Cookie};
-use log::info;
 use reqwest::{
     header::{HeaderMap, HeaderValue, COOKIE},
-    Client,
+    multipart, Client,
 };
 use serde::{Deserialize, Serialize};
 use soup::prelude::*;
 use std::process::Command;
 
-use crate::constants::{DOWNLOAD_PROJECT_URL, PROJECTS_URL};
+use crate::{
+    constants::{DOWNLOAD_PROJECT_URL, PROJECTS_URL, UPLOAD_FILE_URL},
+    custom_log::OlSpinner,
+};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct OlCookie {
@@ -83,7 +85,13 @@ impl OverleafClient {
                     .map(|cookie| format!("{}={}", cookie.name, cookie.value))
                     .join(";"),
             )
-            .context("Failed to build default headers for Overleaf client.")?,
+            .context("Failed to build Cookie header for Overleaf client.")?,
+        );
+
+        headers.insert(
+            "X-CSRF-TOKEN",
+            HeaderValue::from_str(&session_info.csrf_token)
+                .context("Failed to build X-CSRF-TOKEN header for Overleaf client.")?,
         );
 
         let reqwest_client = reqwest::Client::builder()
@@ -144,35 +152,47 @@ impl OverleafClient {
     }
 
     // Fetch specified project info.
-    pub async fn get_project_details(&self, project_id: &String) -> Result<ProjectDetails> {
-        info!("Fetching project details for project_id {project_id}.");
+    pub fn get_project_details(&self, project_id: &String) -> Result<ProjectDetails> {
+        let mut spinner = OlSpinner::new("Fetching project details...".to_owned());
 
-        let output = String::from_utf8(
-            Command::new("olsync-rs-socketio-client")
-                .args([
-                    self.session_info.gclb_cookie.value.as_str(),
-                    self.session_info.session_cookie.value.as_str(),
-                    project_id.as_str(),
-                ])
-                .output()
-                .context(format!(
-                    "Failed to obtain project info for project {project_id}."
-                ))?
-                .stdout,
-        )
-        .context("Invalid UTF-8")?
-        .replace("'", "\"")
-        .replace("None", "null")
-        .replace("True", "true")
-        .replace("False", "false");
+        let details_result = {
+            let details_closure = || {
+                let output = String::from_utf8(
+                    Command::new("olsync-rs-socketio-client")
+                        .args([
+                            self.session_info.gclb_cookie.value.as_str(),
+                            self.session_info.session_cookie.value.as_str(),
+                            project_id.as_str(),
+                        ])
+                        .output()
+                        .context(format!(
+                            "Failed to obtain project info for project {project_id}."
+                        ))?
+                        .stdout,
+                )
+                .context("Invalid UTF-8")?
+                .replace("'", "\"")
+                .replace("None", "null")
+                .replace("True", "true")
+                .replace("False", "false");
 
-        info!("Successfully fetched project details.");
+                serde_json::from_str(output.as_str()).map_err(|e| {
+                    anyhow!(format!(
+                        "Failed to deserialize project details with error: {e}."
+                    ))
+                })
+            };
 
-        serde_json::from_str(output.as_str()).map_err(|e| {
-            anyhow!(format!(
-                "Failed to deserialize project details with error: {e}."
-            ))
-        })
+            details_closure()
+        };
+
+        if details_result.is_ok() {
+            spinner.stop_with_success("Fetched project details.".to_owned());
+        } else {
+            spinner.stop_with_error("Failed to fetch project details.".to_owned());
+        }
+
+        details_result
     }
 
     // Download specified project as zip.
@@ -186,5 +206,39 @@ impl OverleafClient {
             .context(format!(
                 "Error occured while downloading project {project_id} as zip.",
             ))
+    }
+
+    // Upload file to specified filed in remote project.
+    pub async fn upload_file(
+        &self,
+        project_id: &str,
+        folder_id: &String,
+        file_name: String,
+        file: Vec<u8>,
+    ) -> Result<()> {
+        let file_part = multipart::Part::bytes(file).file_name(file_name.clone());
+
+        let form = multipart::Form::new()
+            .part("name", multipart::Part::text(file_name.clone()))
+            .part("qqfile", file_part);
+
+        let res = self
+            .reqwest_client
+            .post(UPLOAD_FILE_URL.replace("{}", project_id))
+            .query(&[("folder_id", folder_id)])
+            .multipart(form)
+            .send()
+            .await?;
+
+        if !res.status().is_success() {
+            bail!(
+                "Failed to upload file {file_name} with response:\n{}: {}.",
+                res.status(),
+                String::from_utf8(res.bytes().await?.to_vec())
+                    .unwrap_or("Invalid UTF-8 response.".to_owned())
+            )
+        }
+
+        Ok(())
     }
 }

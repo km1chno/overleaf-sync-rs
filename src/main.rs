@@ -20,14 +20,14 @@ use crate::{
 
 use anyhow::{anyhow, bail, Result};
 use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Command};
-use log::{error, info, LevelFilter};
+use log::{error, LevelFilter};
 
 #[tokio::main]
 async fn main() {
     let matches = Command::new("olsync")
         .version("0.1.0")
         .author("Katzper Michno <katzper.michno@gmail.com>")
-        .about("Overleaf projects synchronization tool")
+        .about("CLI for synchronizing LaTeX projects between Overleaf and your local machine.")
         .subcommand(
             Command::new("clone")
                 .about("Clone remote project")
@@ -50,11 +50,15 @@ async fn main() {
                 .about("Push local files to remote project")
                 .arg(
                     Arg::new("files")
-                        .short('f')
-                        .long("files")
                         .help("List of files to push")
                         .action(ArgAction::Append)
                         .required(true),
+                )
+                .arg(
+                    Arg::new("force")
+                        .long("force")
+                        .help("Skip confirm prompt")
+                        .action(ArgAction::SetTrue),
                 ),
         )
         .subcommand(
@@ -69,7 +73,6 @@ async fn main() {
                 .arg(
                     Arg::new("force")
                         .long("force")
-                        .short('f')
                         .help("Skip confirm prompt")
                         .action(ArgAction::SetTrue),
                 ),
@@ -118,11 +121,13 @@ async fn run_olsync(matches: ArgMatches) -> Result<()> {
                 bail!("Not a olsync repository! Clone a project before pushing.")
             }
 
+            let force = matches.get_one::<bool>("force").unwrap_or(&false);
             let files: Vec<_> = matches.get_many::<String>("files").unwrap().collect();
 
-            match push_action(files).await {
-                Ok(()) => success!("Successfully pushed all files!"),
+            match push_action(files, force).await {
+                Ok(true) => success!("Successfully pushed all files!"),
                 Err(err) => bail!("Failed to push some files with the following error:\n{err}"),
+                _ => {}
             }
         }
         Some(("pull", matches)) => {
@@ -177,10 +182,24 @@ async fn clone_action(
 }
 
 // Push files to remote. Currently only files in root project directory are supported.
-async fn push_action(files: Vec<&String>) -> Result<()> {
-    info!("Pushing list of files {:?}.", files);
+async fn push_action(files: Vec<&String>, force: &bool) -> Result<bool> {
+    let confirm = inquire::Confirm::new(
+        "Pushing files to Overleaf will override them. Do you want to continue?",
+    )
+    .with_default(false);
 
-    push_files(files).await
+    let ans = if *force { Ok(true) } else { confirm.prompt() };
+
+    if matches!(ans, Ok(true)) {
+        let session_info = get_session_info().await?;
+        let overleaf_client = OverleafClient::new(session_info)?;
+
+        let project = get_project_info()?;
+
+        push_files(&overleaf_client, &project.id, files).await?;
+    }
+
+    ans.map_err(|e| anyhow!("An error ocurred in prompt: {e}"))
 }
 
 // Pull the current state from remote.

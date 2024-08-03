@@ -18,7 +18,7 @@ futures-util = "0.3.30"
 headless_chrome = "1.0.10"
 inquire = "0.7.5"
 log = "0.4.22"
-reqwest = "0.12.5"
+reqwest = { version = "0.12.5", features = ["multipart"] }
 rust_socketio = { version = "0.6.0", features = ["async"] }
 serde = "1.0.203"
 serde_json = "1.0.117"
