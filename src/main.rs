@@ -9,8 +9,8 @@ use std::path::PathBuf;
 
 use crate::{
     auth::get_session_info,
-    custom_log::custom_log_format,
-    overleaf_client::{OverleafClient, Project},
+    custom_log::{custom_log_format, OlSpinner},
+    overleaf_client::OverleafClient,
     repository::{
         create_local_backup, download_project, get_project_info, get_repo_root,
         init_olsync_repository, is_olsync_repository, push_files, wipe_project,
@@ -89,29 +89,20 @@ async fn run_olsync(matches: ArgMatches) -> Result<()> {
                 ));
             }
 
-            if matches.contains_id("name") {
-                let project_name = matches.get_one::<String>("name").unwrap();
-                match clone_by_name_action(project_name).await {
-                    Ok(project_path) => success!(
-                        "Cloned project {project_name} into {}.",
-                        path_to_str(&project_path)
-                    ),
-                    Err(err) => {
-                        bail!("Failed to clone project {project_name} with the following error:\n{err}")
-                    }
-                }
-            } else {
-                let project_id = matches.get_one("id").unwrap();
-                match clone_by_id_action(project_id).await {
-                    Ok(project_path) => success!(
-                        "Cloned project with id {project_id} into {}.",
-                        path_to_str(&project_path)
-                    ),
-                    Err(err) => {
-                        bail!(
-                            "Failed to clone project with id {project_id} with the following error:\n{err}"
-                        )
-                    }
+            let project_name = matches.get_one::<String>("name");
+            let project_id = matches.get_one::<String>("id");
+
+            match clone_action(project_name, project_id).await {
+                Ok(project_path) => success!(
+                    "Successfully cloned project {} into {}.",
+                    project_name.unwrap_or_else(|| project_id.unwrap()),
+                    path_to_str(&project_path)
+                ),
+                Err(err) => {
+                    bail!(
+                        "Failed to clone project {} with the following error:\n{err}",
+                        project_name.unwrap_or_else(|| project_id.unwrap())
+                    )
                 }
             }
         }
@@ -123,7 +114,7 @@ async fn run_olsync(matches: ArgMatches) -> Result<()> {
             let files: Vec<_> = matches.get_many::<String>("files").unwrap().collect();
 
             match push_action(files).await {
-                Ok(()) => success!("Pushed all files."),
+                Ok(()) => success!("Successfully pushed all files!"),
                 Err(err) => bail!("Failed to push some files with the following error:\n{err}"),
             }
         }
@@ -135,7 +126,7 @@ async fn run_olsync(matches: ArgMatches) -> Result<()> {
             let no_backup = matches.get_one::<bool>("no-backup").unwrap_or(&false);
 
             match pull_action(no_backup).await {
-                Ok(()) => success!("Pulled current project state from Overleaf."),
+                Ok(()) => success!("Successfully pulled current project state from Overleaf!"),
                 Err(err) => bail!("Failed to pull the project with the following error:\n{err}"),
             }
         }
@@ -145,25 +136,30 @@ async fn run_olsync(matches: ArgMatches) -> Result<()> {
     Ok(())
 }
 
-// Clone project by name into current directory.
-async fn clone_by_name_action(project_name: &String) -> Result<PathBuf> {
+// Clone project into ./{project_name} directory.
+async fn clone_action(
+    project_name: Option<&String>,
+    project_id: Option<&String>,
+) -> Result<PathBuf> {
     let session_info = get_session_info().await?;
     let overleaf_client = OverleafClient::new(session_info)?;
 
-    let project: Project = overleaf_client.get_project_by_name(project_name).await?;
-    let repo_root = init_olsync_repository(&project)?;
+    let mut spinner = OlSpinner::new("Fetching project information...".to_owned());
 
-    download_project(&overleaf_client, &project.id, &repo_root, None).await?;
+    let project_result = match project_name {
+        Some(name) => overleaf_client.get_project_by_name(name).await,
+        None => overleaf_client.get_project_by_id(project_id.unwrap()).await,
+    };
 
-    Ok(repo_root)
-}
+    if project_result.is_err() {
+        spinner.stop_with_error("Failed to fetch project information.".to_owned());
+        return Err(project_result.err().unwrap());
+    }
 
-// Clone project by id into current directory.
-async fn clone_by_id_action(project_id: &String) -> Result<PathBuf> {
-    let session_info = get_session_info().await?;
-    let overleaf_client = OverleafClient::new(session_info)?;
+    let project = project_result.unwrap();
 
-    let project: Project = overleaf_client.get_project_by_id(project_id).await?;
+    spinner.stop_with_success(format!("Fetched information for project {}.", project.name));
+
     let repo_root = init_olsync_repository(&project)?;
 
     download_project(&overleaf_client, &project.id, &repo_root, None).await?;

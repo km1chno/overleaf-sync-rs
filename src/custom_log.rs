@@ -51,18 +51,18 @@ pub struct OlSpinner {
 }
 
 impl OlSpinner {
-    pub fn new(message: &str) -> Self {
-        let spinner = Spinner::new(spinners::Aesthetic, message.to_owned(), Color::White);
+    pub fn new(message: String) -> Self {
+        let spinner = Spinner::new(spinners::Aesthetic, message, Color::White);
         OlSpinner { spinner }
     }
 
-    pub fn stop_with_success(&mut self, message: &str) {
+    pub fn stop_with_success(&mut self, message: String) {
         self.spinner
-            .stop_with_message(success_message(message.to_owned()).as_str());
+            .stop_with_message(success_message(message).as_str());
     }
 
-    pub fn stop_with_error(&mut self, message: &str) {
+    pub fn stop_with_error(&mut self, message: String) {
         self.spinner
-            .stop_with_message(error_message(message.to_owned()).as_str());
+            .stop_with_message(error_message(message).as_str());
     }
 }

@@ -15,6 +15,7 @@ use crate::{
         GCLB_COOKIE_NAME, LOGIN_URL, ONE_HOUR_IN_SECONDS, SESSION_COOKIE_NAME, SOCKET_URL,
     },
     overleaf_client::{OlCookie, SessionInfo},
+    success,
     utils::path_to_str,
 };
 
@@ -97,7 +98,7 @@ fn get_olsyncinfo_path() -> Result<PathBuf> {
 
 // Try to retrieve cached session info from ~/.olsyncinfo.
 fn get_session_info_from_file() -> Option<SessionInfo> {
-    info!("Trying to retrieve cached session information from ~/.olsyncinfo.");
+    info!("Trying to retrieve cached session information.");
 
     let info_path = get_olsyncinfo_path().ok()?;
 
@@ -111,7 +112,7 @@ fn get_session_info_from_file() -> Option<SessionInfo> {
 
 // Save session info to ~/.olsyncinfo.
 fn save_session_info_to_file(session_info: &SessionInfo) -> Result<()> {
-    info!("Saving session information to ~/.olsyncinfo.");
+    info!("Saving session information to cache.");
 
     let serialized_info = serde_json::to_string(session_info)?;
     let info_path = get_olsyncinfo_path()?;
@@ -138,7 +139,13 @@ pub async fn get_session_info() -> Result<SessionInfo> {
             bail!("Failed to obtain session info from login browser.")
         }
 
+        success!("Successfuly created new session.");
+
         save_session_info_to_file(&session_info.clone().unwrap())?;
+
+        success!("Saved session info to cache.");
+    } else {
+        success!("Obtained session info from cache.")
     }
 
     Ok(session_info.unwrap())

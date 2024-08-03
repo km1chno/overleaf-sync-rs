@@ -1,5 +1,6 @@
 use crate::{
     auth::get_session_info,
+    custom_log::OlSpinner,
     overleaf_client::{OverleafClient, Project},
     utils::path_to_str,
 };
@@ -44,10 +45,7 @@ pub fn is_olsync_repository() -> bool {
 
 // Initialize new olsync repository in ./{project.name} and return its path.
 pub fn init_olsync_repository(project: &Project) -> Result<PathBuf> {
-    info!(
-        "Initializing empty olsync repository for project with id {}.",
-        project.id
-    );
+    info!("Initializing empty olsync repository for project.");
 
     if is_olsync_repository() {
         bail!("This already is an olsync repository!");
@@ -84,40 +82,50 @@ pub fn get_repo_root() -> Result<PathBuf> {
 
 // Create a timestamp annotated backup of local project.
 pub fn create_local_backup() -> Result<()> {
-    let repo_root = get_repo_root()?;
+    let mut spinner = OlSpinner::new("Creating backup of local project.".to_owned());
 
-    let bak_name = &format!(
-        "{}-{}.local.bak",
-        &get_project_info()?.name,
-        Utc::now().timestamp_millis()
-    );
-    let bak_path = get_olsync_directory()
-        .context("Failed to obtain .olsync directory.")?
-        .join(bak_name);
+    let backup_result: Result<PathBuf, &str> = {
+        let repo_root = get_repo_root()?;
 
-    info!(
-        "Creating local backup in {}.",
-        path_to_str(bak_path.clone().as_path())
-    );
+        let bak_name = &format!(
+            "{}-{}.local.bak",
+            &get_project_info()?.name,
+            Utc::now().timestamp_millis()
+        );
+        let bak_path = get_olsync_directory()
+            .context("Failed to obtain .olsync directory.")?
+            .join(bak_name);
 
-    fs::create_dir(bak_path.clone())?;
+        fs::create_dir(bak_path.clone())?;
 
-    let items_in_root = fs::read_dir(repo_root)?;
+        let items_in_root = fs::read_dir(repo_root)?;
 
-    for item in items_in_root {
-        let path = item.unwrap().path();
-        let name = path.file_name().unwrap();
+        for item in items_in_root {
+            let path = item.unwrap().path();
+            let name = path.file_name().unwrap();
 
-        if name != ".olsync" {
-            fs_extra::copy_items(
-                &[path.to_str().unwrap()],
-                bak_path.clone(),
-                &CopyOptions::new(),
-            )?;
+            if name != ".olsync" {
+                fs_extra::copy_items(
+                    &[path.to_str().unwrap()],
+                    bak_path.clone(),
+                    &CopyOptions::new(),
+                )?;
+            }
         }
-    }
 
-    Ok(())
+        Ok(bak_path)
+    };
+
+    if let Ok(bak_path) = backup_result {
+        spinner.stop_with_success(format!(
+            "Saved backup of local project in {}.",
+            path_to_str(bak_path.as_path())
+        ));
+        Ok(())
+    } else {
+        spinner.stop_with_error("Failed to create backup of local project.".to_owned());
+        bail!(backup_result.err().unwrap())
+    }
 }
 
 // Wipes everything in root directory except .olsync.
@@ -144,41 +152,40 @@ pub fn wipe_project() -> Result<()> {
 // If archive_name is None, the archive will be extracted.
 pub async fn download_project(
     overleaf_client: &OverleafClient,
-    project_id: &String,
+    project_id: &str,
     target_dir: &Path,
     archive_name: Option<String>,
 ) -> Result<()> {
-    info!("Downloading project {project_id}.");
+    info!("Downloading project into {}.", path_to_str(target_dir));
 
-    let archive: Vec<u8> = overleaf_client
-        .download_project_zip(project_id.clone())
-        .await?
-        .to_vec();
+    let mut spinner = OlSpinner::new("Downloading project.".to_owned());
 
-    match archive_name {
-        Some(name) => {
-            let archive_name = format!("{}.zip", name);
+    let download_result = {
+        let archive: Vec<u8> = overleaf_client
+            .download_project_zip(project_id.to_owned())
+            .await?
+            .to_vec();
 
-            info!("Saving as {archive_name}");
+        match archive_name {
+            Some(name) => {
+                let file_name = format!("{}.zip", name);
 
-            fs::write(PathBuf::from(target_dir).join(name), archive).context(format!(
-                "Failed to save downloaded project to {}.",
-                path_to_str(target_dir)
-            ))
+                fs::write(PathBuf::from(target_dir).join(name), archive)
+                    .map(|()| format!("Saved project as {}.", file_name))
+                    .context("Failed to save downloaded project.".to_owned())
+            }
+            None => zip_extract::extract(Cursor::new(archive), target_dir, true)
+                .map(|()| "Downloaded and extracted project.".to_owned())
+                .context("Failed to extract downloaded project zip file.".to_owned()),
         }
-        None => {
-            info!(
-                "Extracting downloaded project into {}.",
-                path_to_str(target_dir)
-            );
+    };
 
-            zip_extract::extract(Cursor::new(archive), target_dir, true).or_else(|_| {
-                bail!(
-                    "Failed to extract downloaded project zip file to {}.",
-                    path_to_str(target_dir)
-                )
-            })
-        }
+    if let Ok(message) = download_result {
+        spinner.stop_with_success(message);
+        Ok(())
+    } else {
+        spinner.stop_with_error("Failed to download and save project.".to_owned());
+        bail!(download_result.err().unwrap())
     }
 }
 
