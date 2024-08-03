@@ -78,9 +78,23 @@ pub async fn login() -> Result<SessionInfo> {
         .cloned()
         .map(OlCookie::from_chrome_cookie)?;
 
+    success!("Obtained session Cookie.");
+
+    let csrf_meta_tag_content = tab
+        .wait_for_element("meta[name=\"ol-csrfToken\"]")?
+        .get_attribute_value("content")?;
+
+    if csrf_meta_tag_content.is_none() {
+        bail!("CSRF meta tag content attribute is empty.")
+    }
+
+    let csrf_token = csrf_meta_tag_content.unwrap();
+
+    success!("Obtained CSRF Token.");
+
     let gclb_cookie = get_gclb(session_cookie.clone()).await?;
 
-    let csrf_token = "token?".to_owned();
+    success!("Obtained GCLB Cookie.");
 
     Ok(SessionInfo {
         session_cookie,
