@@ -16,6 +16,10 @@ jobs:
         toolchain: nightly
         profile: minimal
         components: clippy
+  
+    - name: 🐛 Print rustc version 
+      run: |
+        rustc --version
 
     - name: 🛠️ Build project
       run: |
