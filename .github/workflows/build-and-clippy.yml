@@ -1,6 +1,8 @@
 name: Build and run Clippy
 
-on: [pull_request]
+on: 
+  pull_request:
+    - 'olsync/**'
 
 jobs:
   build-and-clippy:
