@@ -2,7 +2,8 @@ name: Build and run Clippy
 
 on: 
   pull_request:
-    - 'olsync/**'
+    paths:
+      - 'olsync/**'
 
 jobs:
   build-and-clippy:
@@ -24,7 +25,8 @@ jobs:
 
     - name: 🛠️ Build project
       run: |
-        RUSTFLAGS="-D warnings" cargo build
+        cd olsync; RUSTFLAGS="-D warnings" cargo build
 
     - name: ✨ Run Clippy
-      run: cargo clippy -- -D warnings
+      run: |
+        cd olsync; cargo clippy -- -D warnings
