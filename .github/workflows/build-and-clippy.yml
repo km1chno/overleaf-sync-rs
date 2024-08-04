@@ -19,7 +19,7 @@ jobs:
 
     - name: 🛠️ Build project
       run: |
-        RUSTFLAGS="-D warnings" cargo build --verbose
+        RUSTFLAGS="-D warnings" cargo build
 
     - name: ✨ Run Clippy
       run: cargo clippy -- -D warnings
