@@ -6,7 +6,10 @@ pub mod repository;
 pub mod utils;
 
 use crate::{
-    auth::{get_session_info, get_session_info_from_file},
+    auth::{
+        get_session_info, get_session_info_from_browser, get_session_info_from_file,
+        remove_session_info,
+    },
     custom_log::{custom_log_format, OlSpinner},
     overleaf_client::OverleafClient,
     repository::{
@@ -28,6 +31,9 @@ async fn main() {
         .version("0.1.0")
         .author("Katzper Michno <katzper.michno@gmail.com>")
         .about("CLI for synchronizing LaTeX projects between Overleaf and your local machine.")
+        .subcommand(Command::new("whoami").about("Print current session info"))
+        .subcommand(Command::new("login").about("Log into Overleaf account"))
+        .subcommand(Command::new("logout").about("Log out of currently used Overleaf account"))
         .subcommand(
             Command::new("clone")
                 .about("Clone remote project")
@@ -45,7 +51,6 @@ async fn main() {
                         .multiple(false),
                 ),
         )
-        .subcommand(Command::new("whoami").about("Print current session info"))
         .subcommand(
             Command::new("push")
                 .about("Push local files to remote project")
@@ -92,11 +97,24 @@ async fn main() {
 
 async fn run_olsync(matches: ArgMatches) -> Result<()> {
     match matches.subcommand() {
-        Some(("whoami", _matches)) => match whoami_action().await {
+        Some(("whoami", _)) => match whoami_action().await {
             Ok(()) => {}
             Err(err) => {
                 bail!("Failed to obtain session info with the following error:\n{err}")
             }
+        },
+        Some(("login", _)) => match login_action().await {
+            Ok((true, email)) => success!("Successfully logged in as {email}."),
+            Ok((false, email)) => println!(
+                "Already logged in as {}. Use {} if you want to log into another account.",
+                email.green(),
+                "olsync logout".cyan()
+            ),
+            Err(err) => bail!("Failed to log in with the following error:\n{err}"),
+        },
+        Some(("logout", _)) => match logout_action().await {
+            Ok(()) => {}
+            Err(err) => bail!("Failed to log out with the following error:\n{err}"),
         },
         Some(("clone", matches)) => {
             if is_olsync_repository() {
@@ -167,6 +185,27 @@ async fn whoami_action() -> Result<()> {
         );
     } else {
         println!("Not logged in. Use {}.", "olsync login".cyan());
+    }
+
+    Ok(())
+}
+
+// Log in if currently logged out and return user email.
+async fn login_action() -> Result<(bool, String)> {
+    if let Some(info) = get_session_info_from_file() {
+        Ok((false, info.email))
+    } else {
+        let session_info = get_session_info_from_browser().await?;
+        Ok((true, session_info.email))
+    }
+}
+
+async fn logout_action() -> Result<()> {
+    if let Some(info) = get_session_info_from_file() {
+        remove_session_info()?;
+        println!("Logged out from {}", info.email.green());
+    } else {
+        println!("Already logged out.")
     }
 
     Ok(())

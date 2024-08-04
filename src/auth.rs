@@ -125,6 +125,12 @@ pub fn get_session_info_from_file() -> Option<SessionInfo> {
     }
 }
 
+// Remove ~/.olsyncinfo file.
+pub fn remove_session_info() -> Result<()> {
+    let info_path = get_olsyncinfo_path()?;
+    fs::remove_file(info_path).map_err(|e| anyhow!("Failed to remove session info with error: {e}"))
+}
+
 // Save session info to ~/.olsyncinfo.
 fn save_session_info_to_file(session_info: &SessionInfo) -> Result<()> {
     info!("Saving session information to cache.");
@@ -140,28 +146,31 @@ fn save_session_info_to_file(session_info: &SessionInfo) -> Result<()> {
     })
 }
 
+// Opens browser to log in and obtain new session information and saves it to cache.
+pub async fn get_session_info_from_browser() -> Result<SessionInfo> {
+    let session_info = login()
+        .await
+        .context("Failed to obtain session info from login browser")?;
+
+    success!("Successfuly created new session.");
+
+    save_session_info_to_file(&session_info)?;
+
+    success!("Saved session info to cache.");
+
+    Ok(session_info)
+}
+
 // Read cached session info or spawn browser to login and
 // save new info in cache.
 pub async fn get_session_info() -> Result<SessionInfo> {
-    let mut session_info = get_session_info_from_file();
+    let session_info = get_session_info_from_file();
 
     if session_info.is_none() {
         warn!("Unable to detect cached session information. Opening browser for manual login.");
-
-        session_info = login().await.ok();
-
-        if session_info.is_none() {
-            bail!("Failed to obtain session info from login browser.")
-        }
-
-        success!("Successfuly created new session.");
-
-        save_session_info_to_file(&session_info.clone().unwrap())?;
-
-        success!("Saved session info to cache.");
+        get_session_info_from_browser().await
     } else {
-        success!("Obtained session info from cache.")
+        success!("Obtained session info from cache.");
+        Ok(session_info.unwrap())
     }
-
-    Ok(session_info.unwrap())
 }
