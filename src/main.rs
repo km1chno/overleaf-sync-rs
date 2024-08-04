@@ -5,10 +5,8 @@ pub mod overleaf_client;
 pub mod repository;
 pub mod utils;
 
-use std::path::PathBuf;
-
 use crate::{
-    auth::get_session_info,
+    auth::{get_session_info, get_session_info_from_file},
     custom_log::{custom_log_format, OlSpinner},
     overleaf_client::OverleafClient,
     repository::{
@@ -20,7 +18,9 @@ use crate::{
 
 use anyhow::{anyhow, bail, Result};
 use clap::{Arg, ArgAction, ArgGroup, ArgMatches, Command};
+use colored::Colorize;
 use log::{error, LevelFilter};
+use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() {
@@ -45,6 +45,7 @@ async fn main() {
                         .multiple(false),
                 ),
         )
+        .subcommand(Command::new("whoami").about("Print current session info"))
         .subcommand(
             Command::new("push")
                 .about("Push local files to remote project")
@@ -91,6 +92,12 @@ async fn main() {
 
 async fn run_olsync(matches: ArgMatches) -> Result<()> {
     match matches.subcommand() {
+        Some(("whoami", _matches)) => match whoami_action().await {
+            Ok(()) => {}
+            Err(err) => {
+                bail!("Failed to obtain session info with the following error:\n{err}")
+            }
+        },
         Some(("clone", matches)) => {
             if is_olsync_repository() {
                 bail!(concat!(
@@ -145,6 +152,21 @@ async fn run_olsync(matches: ArgMatches) -> Result<()> {
             }
         }
         _ => bail!("Unknown subcommand."),
+    }
+
+    Ok(())
+}
+
+// Print session info.
+async fn whoami_action() -> Result<()> {
+    if let Some(info) = get_session_info_from_file() {
+        println!("{}", info.email.green());
+        println!(
+            "Session expires at {}",
+            info.session_cookie.expiry_date_pretty()
+        );
+    } else {
+        println!("Not logged in. Use {}.", "olsync login".cyan());
     }
 
     Ok(())

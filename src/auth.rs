@@ -70,6 +70,13 @@ pub async fn login() -> Result<SessionInfo> {
         Duration::new(ONE_HOUR_IN_SECONDS, 0),
     )?;
 
+    let email = tab
+        .wait_for_element("meta[name=\"ol-usersEmail\"]")?
+        .get_attribute_value("content")?
+        .context("User email meta tag content attribute is empty")?;
+
+    success!("Obtained user email.");
+
     let session_cookie = tab
         .get_cookies()?
         .iter()
@@ -80,15 +87,10 @@ pub async fn login() -> Result<SessionInfo> {
 
     success!("Obtained session Cookie.");
 
-    let csrf_meta_tag_content = tab
+    let csrf_token = tab
         .wait_for_element("meta[name=\"ol-csrfToken\"]")?
-        .get_attribute_value("content")?;
-
-    if csrf_meta_tag_content.is_none() {
-        bail!("CSRF meta tag content attribute is empty.")
-    }
-
-    let csrf_token = csrf_meta_tag_content.unwrap();
+        .get_attribute_value("content")?
+        .context("CSRF meta tag content attribute is empty.")?;
 
     success!("Obtained CSRF Token.");
 
@@ -97,6 +99,7 @@ pub async fn login() -> Result<SessionInfo> {
     success!("Obtained GCLB Cookie.");
 
     Ok(SessionInfo {
+        email,
         session_cookie,
         gclb_cookie,
         csrf_token,
@@ -111,9 +114,7 @@ fn get_olsyncinfo_path() -> Result<PathBuf> {
 }
 
 // Try to retrieve cached session info from ~/.olsyncinfo.
-fn get_session_info_from_file() -> Option<SessionInfo> {
-    info!("Trying to retrieve cached session information.");
-
+pub fn get_session_info_from_file() -> Option<SessionInfo> {
     let info_path = get_olsyncinfo_path().ok()?;
 
     match File::open(info_path) {

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
 use headless_chrome::protocol::cdp::{types::JsFloat, Network::Cookie};
 use reqwest::{
     header::{HeaderMap, HeaderValue, COOKIE},
@@ -34,10 +34,26 @@ impl OlCookie {
     pub fn has_expired(&self) -> bool {
         self.expires <= ((Utc::now().timestamp_millis() / 1000) as f64)
     }
+
+    pub fn expiry_date_pretty(&self) -> String {
+        // Optionally convert to DateTime<Utc> for time zone handling
+        // let datetime_utc = Utc.timestamp(unix_timestamp, 0);
+
+        // Print the results
+        // println!("Naive DateTime (UTC): {}", naive_datetime);
+        // println!("DateTime<Utc>: {}", datetime_utc);
+
+        // Formatting example
+        // println!("Formatted DateTime: {}", datetime_utc.format("%Y-%m-%d %H:%M:%S"));
+        Utc.timestamp_opt(self.expires as i64, 0)
+            .unwrap()
+            .to_string()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SessionInfo {
+    pub email: String,
     pub session_cookie: OlCookie,
     pub gclb_cookie: OlCookie,
     pub csrf_token: String,
