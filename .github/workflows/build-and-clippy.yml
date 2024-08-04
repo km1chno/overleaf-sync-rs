@@ -1,0 +1,32 @@
+name: Build and run Clippy
+
+on: 
+  pull_request:
+    paths:
+      - 'olsync/**'
+
+jobs:
+  build-and-clippy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 🏗 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🦀 Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: nightly
+        components: clippy
+  
+    - name: 🐛 Print rustc version 
+      run: |
+        rustc --version
+
+    - name: 🛠️ Build project
+      run: |
+        cd olsync; RUSTFLAGS="-D warnings" cargo build
+
+    - name: ✨ Run Clippy
+      run: |
+        cd olsync; cargo clippy -- -D warnings
