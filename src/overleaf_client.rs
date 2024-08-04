@@ -36,15 +36,6 @@ impl OlCookie {
     }
 
     pub fn expiry_date_pretty(&self) -> String {
-        // Optionally convert to DateTime<Utc> for time zone handling
-        // let datetime_utc = Utc.timestamp(unix_timestamp, 0);
-
-        // Print the results
-        // println!("Naive DateTime (UTC): {}", naive_datetime);
-        // println!("DateTime<Utc>: {}", datetime_utc);
-
-        // Formatting example
-        // println!("Formatted DateTime: {}", datetime_utc.format("%Y-%m-%d %H:%M:%S"));
         Utc.timestamp_opt(self.expires as i64, 0)
             .unwrap()
             .to_string()
