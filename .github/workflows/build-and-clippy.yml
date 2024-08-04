@@ -1,0 +1,25 @@
+name: Build and run Clippy
+
+on: [pull_request]
+
+jobs:
+  build-and-clippy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 🏗 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🦀 Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        components: clippy
+
+    - name: 🛠️ Build project
+      run: |
+        RUSTFLAGS="-D warnings" cargo build --verbose
+
+    - name: ✨ Run Clippy
+      run: cargo clippy -- -D warnings
