@@ -47,7 +47,6 @@ async fn main() {
                 .group(
                     ArgGroup::new("Project key")
                         .args(["name", "id"])
-                        .required(true)
                         .multiple(false),
                 ),
         )
@@ -127,11 +126,11 @@ async fn run_olsync(matches: ArgMatches) -> Result<()> {
             let project_name = matches.get_one::<String>("name");
             let project_id = matches.get_one::<String>("id");
 
-            match clone_action(project_name, project_id).await {
-                Ok(project_path) => success!(
+            match clone_action(&mut project_name.cloned(), project_id.cloned()).await {
+                Ok((name, path)) => success!(
                     "Successfully cloned project {} into {}.",
-                    project_name.unwrap_or_else(|| project_id.unwrap()),
-                    path_to_str(&project_path)
+                    name,
+                    path_to_str(&path)
                 ),
                 Err(err) => {
                     bail!(
@@ -200,6 +199,7 @@ async fn login_action() -> Result<(bool, String)> {
     }
 }
 
+// Log out if currently logged in.
 async fn logout_action() -> Result<()> {
     if let Some(info) = get_session_info_from_file() {
         remove_session_info()?;
@@ -211,19 +211,48 @@ async fn logout_action() -> Result<()> {
     Ok(())
 }
 
-// Clone project into ./{project_name} directory.
+// Clone project into ./{project_name} directory and return (project_name, project_path).
 async fn clone_action(
-    project_name: Option<&String>,
-    project_id: Option<&String>,
-) -> Result<PathBuf> {
+    project_name: &mut Option<String>,
+    project_id: Option<String>,
+) -> Result<(String, PathBuf)> {
     let session_info = get_session_info().await?;
     let overleaf_client = OverleafClient::new(session_info)?;
+
+    if project_name.is_none() && project_id.is_none() {
+        let mut spinner = OlSpinner::new("Fetching list of projects...".to_owned());
+
+        let projects_list_result = overleaf_client.get_all_projects().await;
+
+        if projects_list_result.is_err() {
+            spinner.stop_with_error("Failed to fetch list of projects.".to_owned());
+            return Err(projects_list_result.err().unwrap());
+        }
+
+        spinner.stop_with_success("Fetched list of projects from Overleaf.".to_owned());
+
+        let projects_list = projects_list_result
+            .unwrap()
+            .projects
+            .into_iter()
+            .map(|project| project.name)
+            .collect();
+
+        let selected_project_name =
+            inquire::Select::new("Select project to clone.", projects_list).prompt()?;
+
+        project_name.replace(selected_project_name);
+    }
 
     let mut spinner = OlSpinner::new("Fetching project information...".to_owned());
 
     let project_result = match project_name {
         Some(name) => overleaf_client.get_project_by_name(name).await,
-        None => overleaf_client.get_project_by_id(project_id.unwrap()).await,
+        None => {
+            overleaf_client
+                .get_project_by_id(&project_id.unwrap())
+                .await
+        }
     };
 
     if project_result.is_err() {
@@ -239,7 +268,7 @@ async fn clone_action(
 
     download_project(&overleaf_client, &project.id, &repo_root, None).await?;
 
-    Ok(repo_root)
+    Ok((project.name, repo_root))
 }
 
 // Push files to remote. Currently only files in root project directory are supported.
