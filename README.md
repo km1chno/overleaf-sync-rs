@@ -28,7 +28,11 @@ Obviously, the list is dynamic and hopefully the tool will get more reliable and
 
 ## 💡 Example usage
 
-// TODO
+<p align="center">
+  <img 
+    style="width: 80%;"
+    src="https://github.com/user-attachments/assets/ab3c9848-7b14-4ce3-9ade-caf66a7c76af"/>
+</p>
 
 ## 📦 Dependencies
 
