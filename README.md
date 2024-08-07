@@ -36,13 +36,17 @@ Obviously, the list is dynamic and hopefully the tool will get more reliable and
 
 ## 📦 Dependencies
 
-// TODO
+Make you have `python` and `pipx`, **nightly** `rustc >= 1.81.0-nightly` with `cargo` and `google-chrome` (used for login to Overleaf via the tool) on your system.
 
 ## 🚀 Installation
 
 #### Build from source
 
-// TODO
+```
+git clone git@github.com:km1chno/overleaf-sync-rs.git
+cd overleaf-sync-rs
+./install.sh
+```
 
 #### AUR
 
