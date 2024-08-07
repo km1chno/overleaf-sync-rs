@@ -30,7 +30,7 @@ async fn main() {
     let matches = Command::new("olsync")
         .version("0.1.0")
         .author("Katzper Michno <katzper.michno@gmail.com>")
-        .about("CLI for synchronizing LaTeX projects between Overleaf and your local machine.")
+        .about("CLI for synchronizing LaTeX projects between Overleaf and your local machine")
         .subcommand(Command::new("whoami").about("Print current session info"))
         .subcommand(Command::new("login").about("Log into Overleaf account"))
         .subcommand(Command::new("logout").about("Log out of currently used Overleaf account"))
