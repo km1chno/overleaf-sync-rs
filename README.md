@@ -19,12 +19,12 @@ This is a fairly fresh project developed by one person during their free time, s
 Obviously, the list is dynamic and hopefully the tool will get more reliable and versatile as the project grows.
 
 - The project not been properly field-tested yet, therefore it is **not advised to use it with crucial and/or large projects, the tool is overriding
-  files both on your local machine and Overleaf servers, so unforeseen bugs can have destructive effects. The developers of `overleaf-sync` do not take
-  responsibility for any harm the tool causes**.
+  files both on your local machine and Overleaf servers, so unforeseen bugs can have destructive effects. <ins>The developers of `overleaf-sync` do not take
+  responsibility for any harm the tool causes</ins>**.
 
 - No one knows what happens if you try to synchronize projects that someone else is currently working on.
 
-- Currently, you can only push files to the root directory of project on Overleaf, not to subdirectories. Getting rid of this limitation is planned and you can track it here [#5](https://github.com/km1chno/overleaf-sync-rs/issues/5).
+- Currently, **<ins>you can only push files to the root directory of project on Overleaf</ins>**, not to subdirectories. Getting rid of this limitation is planned and you can track it here [#5](https://github.com/km1chno/overleaf-sync-rs/issues/5).
 
 ## 💡 Example usage
 
@@ -46,7 +46,7 @@ Obviously, the list is dynamic and hopefully the tool will get more reliable and
 
 #### AUR
 
-By the way, if you are on Arch, you get special treatment - `overleaf-sync` is available on AUR repository. You can install it using your favourite AUR client like `yay` or `aura`.
+By the way, `overleaf-sync` is available on AUR repository. You can install it using your favourite AUR client like `yay` or `aura`.
 
 ```
 aura -A overleaf-sync
