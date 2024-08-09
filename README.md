@@ -26,11 +26,11 @@ Obviously, the list is dynamic and hopefully the tool will get more reliable and
 
 - Currently, **<ins>you can only push files to the root directory of project on Overleaf</ins>**, not to subdirectories. Getting rid of this limitation is planned and you can track it here [#5](https://github.com/km1chno/overleaf-sync-rs/issues/5).
 
-## 💡 Example usage
+## 💡 Demo
 
 <p align="center">
   <img 
-    style="width: 80%;"
+    style="width: 90%;"
     src="https://github.com/user-attachments/assets/ab3c9848-7b14-4ce3-9ade-caf66a7c76af"/>
 </p>
 
