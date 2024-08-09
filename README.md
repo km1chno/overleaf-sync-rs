@@ -1,6 +1,6 @@
 <h1 align="center">overleaf-sync</h1>
 
-<p align="center">CLI for synchronizing LaTeX projects between Overleaf and your local machine 🦀 </p>
+<p align="center">CLI for synchronizing LaTeX projects between Overleaf and your local machine </p>
 
 ## ❓ Why and how?
 
