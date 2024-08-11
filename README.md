@@ -1,6 +1,14 @@
-<h1 align="center">overleaf-sync</h1>
+&nbsp;
+
+<p align="center">
+  <img 
+    style="width: 60%;"
+    src="docs/assets/banner.svg"/>
+</p>
 
 <p align="center">CLI for synchronizing LaTeX projects between Overleaf and your local machine </p>
+
+&nbsp;
 
 ## ❓ Why?
 
