@@ -46,6 +46,7 @@ To build the project, you need `cargo-nightly`. In runtime you need `python`, `p
 ```
 git clone git@github.com:km1chno/overleaf-sync-rs.git
 cd overleaf-sync-rs
+chmod +x install.sh
 ./install.sh
 ```
 
