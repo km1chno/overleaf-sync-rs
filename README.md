@@ -71,7 +71,8 @@ By default, the binary is placed in `~/.local/bin` so make sure to add it to you
 By the way, `overleaf-sync` is available on AUR repository. You can install it using your favourite AUR client like `yay`.
 
 ```
-yay -S overleaf-sync
+yay -Sc
+yay -Sy overleaf-sync
 ```
 
 ## ⚙️ Features
