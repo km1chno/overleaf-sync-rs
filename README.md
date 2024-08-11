@@ -6,7 +6,13 @@
     src="docs/assets/banner.svg"/>
 </p>
 
-<p align="center">CLI for synchronizing LaTeX projects between Overleaf and your local machine </p>
+<p align="center">
+  <img src="https://img.shields.io/github/v/release/km1chno/overleaf-sync-rs?style=flat-square&label=latest release&color=green" alt="release" />
+  <img src="https://img.shields.io/aur/version/overleaf-sync?style=flat-square&label=AUR version" alt="aur-version" />
+  <img src="https://img.shields.io/github/license/km1chno/overleaf-sync-rs?style=flat-square&color=orange" alt="license" />
+</p>
+
+<p align="center"><b>CLI for synchronizing LaTeX projects between Overleaf and your local machine</b></p>
 
 &nbsp;
 
