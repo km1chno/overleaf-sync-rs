@@ -2,16 +2,25 @@
 
 <p align="center">CLI for synchronizing LaTeX projects between Overleaf and your local machine </p>
 
-## ❓ Why and how?
+## ❓ Why?
 
 If you like working on your LaTeX projects offline or using your favourite text editor on your local machine,
 but still want to use Overleaf to share your work with others and collaborate, `overleaf-sync` might be something you
 find useful. It provides a bunch of git-like commands for synchronizing the state of your Overleaf projects between
 local storage and Overleaf servers.
 
+## 💡 Demo
+
+<p align="center">
+  <img 
+    style="width: 90%;"
+    src="https://github.com/user-attachments/assets/ab3c9848-7b14-4ce3-9ade-caf66a7c76af"/>
+</p>
+
+## 🔍 How?
+
 `overleaf-sync` will store data in two ways. Firstly, when you first login to your Overleaf account using the tool, it will create a `~/.olsyncinfo`
-file with your user details and authorization cookies. Secondly, every time you clone an existing Overleaf project with `overleaf-sync`, it will create a folder with project files
-and `.olsync/` folder, which keeps track of project details (you can think about it like an analog of `.git/` in git repositories).
+file with your user details and authorization cookies. Secondly, every time you clone an existing Overleaf project with `overleaf-sync`, it will create a directory with project files and `.olsync/` folder, which keeps track of project details (you can think about it like an analog of `.git/` in git repositories).
 
 ## 🌱 Limitations
 
@@ -26,17 +35,9 @@ Obviously, the list is dynamic and hopefully the tool will get more reliable and
 
 - Currently, **<ins>you can only push files to the root directory of project on Overleaf</ins>**, not to subdirectories. Getting rid of this limitation is planned and you can track it here [#5](https://github.com/km1chno/overleaf-sync-rs/issues/5).
 
-## 💡 Demo
-
-<p align="center">
-  <img 
-    style="width: 90%;"
-    src="https://github.com/user-attachments/assets/ab3c9848-7b14-4ce3-9ade-caf66a7c76af"/>
-</p>
-
 ## 📦 Dependencies
 
-Make you have `python` and `pipx`, **nightly** `rustc >= 1.81.0-nightly` with `cargo` and `google-chrome` (used for login to Overleaf via the tool) on your system.
+To build the project, you need `cargo-nightly`. In runtime you need `python`, `pipx` and `google-chrome` (used for login to Overleaf via the tool) on your system.
 
 ## 🚀 Installation
 
@@ -48,12 +49,14 @@ cd overleaf-sync-rs
 ./install.sh
 ```
 
+By default, the binary is placed in `~/.local/bin` so make sure to add it to your `PATH`. You can modify where the binary is placed in `install.sh` script.
+
 #### AUR
 
-By the way, `overleaf-sync` is available on AUR repository. You can install it using your favourite AUR client like `yay` or `aura`.
+By the way, `overleaf-sync` is available on AUR repository. You can install it using your favourite AUR client like `yay`.
 
 ```
-aura -A overleaf-sync
+yay -S overleaf-sync
 ```
 
 ## ⚙️ Features
