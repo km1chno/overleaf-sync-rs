@@ -28,7 +28,7 @@ use std::path::PathBuf;
 #[tokio::main]
 async fn main() {
     let matches = Command::new("olsync")
-        .version("0.1.0")
+        .version("0.3.0")
         .author("Katzper Michno <katzper.michno@gmail.com>")
         .about("CLI for synchronizing LaTeX projects between Overleaf and your local machine")
         .subcommand(Command::new("whoami").about("Print current session info"))
