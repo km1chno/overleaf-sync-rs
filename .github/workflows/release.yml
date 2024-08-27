@@ -9,7 +9,7 @@ jobs:
   changelog:
     runs-on: ubuntu-latest
     steps:
-      - name: 🏗Checkout repo
+      - name: 🏗 Checkout repo
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.PA_TOKEN }}
