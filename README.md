@@ -27,8 +27,8 @@ local storage and Overleaf servers.
 
 <p align="center">
   <img 
-    style="width: 90%;"
-    src="https://github.com/user-attachments/assets/ab3c9848-7b14-4ce3-9ade-caf66a7c76af"/>
+    style="width: 95%;"
+    src="docs/assets/demo.gif"/>
 </p>
 
 ## 🔍 How?
