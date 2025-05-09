@@ -33,7 +33,7 @@ def main():
                              't': int(time.time()),
                              'projectId': project_id
                          },
-                         headers={'Cookie': cookie})
+                         headers={'Cookie': cookie, 'referer': f"{BASE_URL}/project/{project_id}"})
 
     socket_io.on('connect', lambda: None)
     socket_io.wait_for_callbacks()
